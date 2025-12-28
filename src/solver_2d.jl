@@ -79,7 +79,7 @@ function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
 end
 
 """
-    run_simulation(moon::MoonBody2D, hours, T0)
+    run_simulation(moon::MoonBody2D, hours, T0; callback=nothing)
 
 Run a 2D climate simulation.
 
@@ -87,17 +87,23 @@ Run a 2D climate simulation.
 - `moon`: MoonBody2D structure
 - `hours`: Simulation duration in hours
 - `T0`: Initial temperatures (Kelvin) as n_lat × n_lon matrix
+- `callback`: Optional callback for progress reporting (default: nothing)
 
 # Returns
 - Solution object from DifferentialEquations.jl (states are flattened)
 """
-function run_simulation(moon::MoonBody2D, hours::Real, T0::AbstractMatrix{<:Real})
+function run_simulation(moon::MoonBody2D, hours::Real, T0::AbstractMatrix{<:Real}; callback=nothing)
     tspan = (0.0, hours * 3600)
 
     T0_flat = vec(T0)
 
     prob = ODEProblem(derivatives_2d!, T0_flat, tspan, moon)
-    sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+
+    if callback === nothing
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+    else
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0, callback=callback)
+    end
 
     return sol
 end
@@ -219,7 +225,7 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
 end
 
 """
-    run_simulation_moisture(moon::MoonBody2D, hours, T0, M0)
+    run_simulation_moisture(moon::MoonBody2D, hours, T0, M0; callback=nothing)
 
 Run a coupled temperature-moisture simulation.
 
@@ -228,6 +234,7 @@ Run a coupled temperature-moisture simulation.
 - `hours`: Simulation duration in hours
 - `T0`: Initial temperatures (Kelvin) as n_lat × n_lon matrix
 - `M0`: Initial moisture (kg/m²) as n_lat × n_lon matrix
+- `callback`: Optional callback for progress reporting (default: nothing)
 
 # Returns
 - Solution object from DifferentialEquations.jl
@@ -235,14 +242,20 @@ Run a coupled temperature-moisture simulation.
 """
 function run_simulation_moisture(moon::MoonBody2D, hours::Real,
                                   T0::AbstractMatrix{<:Real},
-                                  M0::AbstractMatrix{<:Real})
+                                  M0::AbstractMatrix{<:Real};
+                                  callback=nothing)
     # Combine initial conditions: [T..., M...]
     u0 = vcat(vec(T0), vec(M0))
 
     tspan = (0.0, hours * 3600.0)
 
     prob = ODEProblem(derivatives_2d_moisture!, u0, tspan, moon)
-    sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+
+    if callback === nothing
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+    else
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0, callback=callback)
+    end
 
     return sol
 end

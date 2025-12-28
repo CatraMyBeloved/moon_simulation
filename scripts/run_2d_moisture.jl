@@ -34,9 +34,10 @@ println("Initial moisture: $(M0[1,1]) kg/m² (uniform)")
 
 # Run simulation
 sim_hours = 5000.0  # Shorter for testing moisture dynamics
-println("\nRunning coupled T-M simulation for $(sim_hours) hours...")
-println("  (This may take a while...)")
-@time sol = run_simulation_moisture(moon, sim_hours, T0, M0)
+println("\nRunning coupled T-M simulation for $(round(Int, sim_hours)) hours...")
+progress = make_progress_callback(sim_hours, update_interval_hours=250)
+@time sol = run_simulation_moisture(moon, sim_hours, T0, M0, callback=progress)
+println()  # newline after progress
 
 println("\nSimulation complete!")
 println("  Number of timesteps: $(length(sol.t))")

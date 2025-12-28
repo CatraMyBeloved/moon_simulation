@@ -37,7 +37,7 @@ function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
 end
 
 """
-    run_simulation(moon::MoonBody1D, hours, T0)
+    run_simulation(moon::MoonBody1D, hours, T0; callback=nothing)
 
 Run a 1D climate simulation.
 
@@ -45,16 +45,47 @@ Run a 1D climate simulation.
 - `moon`: MoonBody1D structure
 - `hours`: Simulation duration in hours
 - `T0`: Initial temperatures (Kelvin) for each band
+- `callback`: Optional callback for progress reporting (default: nothing)
 
 # Returns
 - Solution object from DifferentialEquations.jl
 """
-function run_simulation(moon::MoonBody1D, hours::Real, T0::AbstractVector{<:Real})
+function run_simulation(moon::MoonBody1D, hours::Real, T0::AbstractVector{<:Real}; callback=nothing)
     tspan = (0.0, hours * 3600)
 
     prob = ODEProblem(derivatives_1d!, T0, tspan, moon)
 
-    sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+    if callback === nothing
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0)
+    else
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-8, saveat=1800.0, callback=callback)
+    end
 
     return sol
+end
+
+"""
+    make_progress_callback(total_hours; update_interval_hours=500)
+
+Create a callback that prints simulation progress.
+
+# Arguments
+- `total_hours`: Total simulation duration in hours
+- `update_interval_hours`: How often to print progress (default: 500 hours)
+
+# Returns
+- PeriodicCallback suitable for passing to run_simulation
+"""
+function make_progress_callback(total_hours::Real; update_interval_hours::Real=500)
+    total_sec = total_hours * 3600
+    interval_sec = update_interval_hours * 3600
+
+    callback = PeriodicCallback(interval_sec) do integrator
+        pct = 100 * integrator.t / total_sec
+        hr = round(Int, integrator.t / 3600)
+        print("\r  Progress: $(lpad(round(Int, pct), 3))% ($(hr) / $(round(Int, total_hours)) hours)    ")
+        flush(stdout)
+    end
+
+    return callback
 end

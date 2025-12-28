@@ -11,6 +11,7 @@ module HotMoon
 using CoherentNoise
 using Colors
 using DifferentialEquations
+using DifferentialEquations: PeriodicCallback
 using Plots
 using Statistics
 
@@ -30,6 +31,7 @@ export HotMoonBody  # Convenience constructor
 # Export unified simulation function (dispatches on moon type)
 export run_simulation
 export run_simulation_moisture  # Coupled temperature-moisture simulation
+export make_progress_callback   # Progress reporting for long simulations
 
 # Export physics functions
 export get_albedo, get_greenhouse, get_heat_capacity, get_transport_coefficient
