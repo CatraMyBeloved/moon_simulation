@@ -68,7 +68,7 @@ end
 Full spatial representation with topography support.
 
 # Fields
-- `n_lat::Int`: Number of latitude bands (equator to pole)
+- `n_lat::Int`: Number of latitude bands (pole to pole, -90° to +90°)
 - `n_lon::Int`: Number of longitude cells
 - `latitudes::Vector{Float64}`: Center latitude of each band (degrees)
 - `longitudes::Vector{Float64}`: Center longitude of each cell (degrees)
@@ -95,7 +95,7 @@ Create a 2D moon with the specified grid resolution.
 Generates terrain using fractal noise - elevation < 0 is ocean, > 0 is land.
 
 # Arguments
-- `n_lat`: Number of latitude bands (equator to pole)
+- `n_lat`: Number of latitude bands (pole to pole, -90° to +90°)
 - `n_lon`: Number of longitude cells
 - `seed`: Random seed for terrain generation (default: 42)
 - `sea_level`: Higher values = more ocean coverage (default: 0.1)

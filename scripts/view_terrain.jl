@@ -22,9 +22,10 @@ println("Saved to output/terrain_map.png")
 
 # Print some stats
 elev = moon.elevation
+n_total = moon.n_lat * moon.n_lon
 n_ocean = sum(elev .< 0)
 n_land = sum(elev .>= 0)
 println("\nTerrain Statistics:")
-println("  Ocean cells: $n_ocean ($(round(100*n_ocean/(36*72), digits=1))%)")
-println("  Land cells:  $n_land ($(round(100*n_land/(36*72), digits=1))%)")
+println("  Ocean cells: $n_ocean ($(round(100*n_ocean/n_total, digits=1))%)")
+println("  Land cells:  $n_land ($(round(100*n_land/n_total, digits=1))%)")
 println("  Elevation range: $(round(minimum(elev), digits=2)) to $(round(maximum(elev), digits=2))")

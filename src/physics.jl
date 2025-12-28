@@ -209,7 +209,7 @@ end
     calculate_transport_coefficients!(transport_coeffs, elevation, n_lat, n_lon)
 
 Fill the transport coefficient array based on elevation differences.
-Directions: 1=North (toward equator), 2=South (toward pole), 3=East, 4=West
+Directions: 1=toward lower lat index (i-1), 2=toward higher lat index (i+1), 3=East, 4=West
 
 Also applies ocean transport bonus for underwater cells.
 """
@@ -223,20 +223,20 @@ function calculate_transport_coefficients!(transport_coeffs::Array{Float64,3},
             # Ocean bonus: water transports heat more efficiently
             ocean_mult = elev_self < 0.0 ? OCEAN_TRANSPORT_BONUS : 1.0
 
-            # North neighbor (i-1, toward equator)
+            # Neighbor at i-1 (lower latitude index)
             if i > 1
                 elev_neighbor = elevation[i-1, j]
                 transport_coeffs[i, j, 1] = ocean_mult * calculate_directional_transport(elev_self, elev_neighbor)
             else
-                transport_coeffs[i, j, 1] = 0.0  # No north neighbor at equator edge
+                transport_coeffs[i, j, 1] = 0.0  # No neighbor at boundary
             end
 
-            # South neighbor (i+1, toward pole)
+            # Neighbor at i+1 (higher latitude index)
             if i < n_lat
                 elev_neighbor = elevation[i+1, j]
                 transport_coeffs[i, j, 2] = ocean_mult * calculate_directional_transport(elev_self, elev_neighbor)
             else
-                transport_coeffs[i, j, 2] = 0.0  # No south neighbor at pole
+                transport_coeffs[i, j, 2] = 0.0  # No neighbor at boundary
             end
 
             # East neighbor (wraps around)

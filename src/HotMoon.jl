@@ -33,7 +33,6 @@ export run_simulation
 # Export physics functions
 export get_albedo, get_greenhouse, get_heat_capacity, get_transport_coefficient
 export generate_elevation, create_elevation_sampler
-export calculate_directional_transport, calculate_transport_coefficients!
 
 # Export geometry functions
 export get_zenith, get_solar, is_eclipsed
@@ -44,9 +43,8 @@ export plot_global_mean, plot_latitude_profile, plot_heatmap
 export plot_latitude_mean_range, plot_latitude_timeseries, plot_summary
 
 # Export visualization - 2D
-export plot_longitude_timeseries, plot_latitude_mean_range_2d
-export plot_temperature_heatmap_2d, plot_hovmoeller, plot_polar_projection
-export plot_elevation_map
+export plot_global_mean_full, plot_global_mean_detail, plot_snapshot
+export plot_hovmoeller, plot_elevation_map
 
 # Export constants that users might want to reference
 export ROTATION_PERIOD, ORBITAL_PERIOD, ECLIPSE_DURATION

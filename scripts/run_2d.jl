@@ -64,10 +64,11 @@ for i in 1:moon.n_lat
 end
 
 # Longitude slice at equator
+equator_idx = argmin(abs.(moon.latitudes))
 println("\n" * "="^60)
-println("EQUATOR LONGITUDE PROFILE (lat ≈ $(round(moon.latitudes[1], digits=1))°)")
+println("EQUATOR LONGITUDE PROFILE (lat ≈ $(round(moon.latitudes[equator_idx], digits=1))°)")
 println("="^60)
-equator_temps = T_final_C[1, :]
+equator_temps = T_final_C[equator_idx, :]
 for j in 1:4:moon.n_lon  # Every 4th longitude to keep output manageable
     lon = moon.longitudes[j]
     T = equator_temps[j]

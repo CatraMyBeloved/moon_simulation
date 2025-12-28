@@ -63,6 +63,3 @@ const FREEZING_POINT = 273.15          # K
 const WATER_VAPOR_REF_TEMP = 273.15     # K
 const WATER_VAPOR_SCALE = 30.0         # K
 const WATER_VAPOR_STRENGTH = 0.08
-
-# Atmospheric scattering
-const SCATTER_FRACTION = 0.35

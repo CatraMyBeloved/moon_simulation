@@ -6,6 +6,7 @@ using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
 using Serialization
+using Statistics
 
 include(joinpath(@__DIR__, "../src/HotMoon.jl"))
 using .HotMoon
@@ -39,18 +40,39 @@ println("  Simulation time: $(sol.t[end]/3600) hours")
 println("  Timesteps: $(length(sol.t))")
 println("  Latitude bands: $(moon.n_lat)")
 
-# Calculate statistics
-final_temps = sol.u[end] .- 273.15
-lat_weights = vec(sum(moon.cell_areas, dims=2))
-global_mean = sum(final_temps .* lat_weights)
-println("\nFinal statistics:")
-println("  Global mean: $(round(global_mean, digits=1))°C")
-println("  Equator: $(round(final_temps[1], digits=1))°C")
-println("  Pole: $(round(final_temps[end], digits=1))°C")
+# Calculate statistics based on model type
+if moon isa MoonBody1D
+    final_temps = sol.u[end] .- 273.15
+    global_mean = sum(final_temps .* moon.cell_areas)
+    println("\nFinal statistics:")
+    println("  Global mean: $(round(global_mean, digits=1))°C")
+    println("  Equator: $(round(final_temps[1], digits=1))°C")
+    println("  Pole: $(round(final_temps[end], digits=1))°C")
 
-# Regenerate plots
-println("\nRegenerating plots...")
-plot_summary(sol, moon, "$run_dir/reanalyzed.png")
+    # Regenerate plots
+    println("\nRegenerating plots...")
+    plot_summary(sol, moon, "$run_dir/reanalyzed.png")
+else
+    # MoonBody2D
+    T_2d = reshape(sol.u[end], moon.n_lat, moon.n_lon) .- 273.15
+    global_mean = sum(T_2d .* moon.cell_areas)
+    equator_idx = argmin(abs.(moon.latitudes))
+
+    println("\nFinal statistics:")
+    println("  Global mean: $(round(global_mean, digits=1))°C")
+    println("  Min temperature: $(round(minimum(T_2d), digits=1))°C")
+    println("  Max temperature: $(round(maximum(T_2d), digits=1))°C")
+    println("  Equator mean: $(round(mean(T_2d[equator_idx, :]), digits=1))°C")
+
+    # Regenerate plots
+    println("\nRegenerating plots...")
+    p1 = plot_global_mean_full(sol, moon)
+    savefig(p1, "$run_dir/reanalyzed_global_mean.png")
+    p2 = plot_snapshot(sol, moon)
+    savefig(p2, "$run_dir/reanalyzed_snapshot.png")
+    println("Saved: $(run_dir)/reanalyzed_global_mean.png")
+    println("Saved: $(run_dir)/reanalyzed_snapshot.png")
+end
 
 println("\nDone! New plots saved to $run_dir")
 println("\nYou can now interactively analyze the data:")

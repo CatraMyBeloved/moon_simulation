@@ -1,5 +1,5 @@
 """
-Plotting and visualization functions for 1D simulations
+Plotting and visualization functions for 1D and 2D simulations
 """
 
 """
@@ -460,6 +460,28 @@ function plot_latitude_mean_range(sol, moon::MoonBody2D)
 
     hline!([0], linestyle=:dash, color=:blue, alpha=0.5, label="")
     hspan!([0, 40], color=:green, alpha=0.1, label="")
+
+    return p
+end
+
+"""
+    plot_elevation_map(moon::MoonBody2D)
+
+Create a heatmap of terrain elevation with coastline contour.
+Ocean (elevation < 0) shown in blue tones, land in terrain colors.
+"""
+function plot_elevation_map(moon::MoonBody2D)
+    p = heatmap(moon.longitudes, moon.latitudes, moon.elevation,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Terrain Elevation Map",
+        color=:terrain,
+        colorbar_title="Elevation",
+        size=(1000, 500))
+
+    # Add coastline (elevation = 0)
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
 
     return p
 end

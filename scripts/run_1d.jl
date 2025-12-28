@@ -15,9 +15,9 @@ println("="^60)
 println("Hot Moon 1D Climate Simulation")
 println("="^60)
 
-mkpath("../output/plots")
-mkpath("../output/animations")
-mkpath("../output/data")
+mkpath(joinpath(@__DIR__, "../output/plots"))
+mkpath(joinpath(@__DIR__, "../output/animations"))
+mkpath(joinpath(@__DIR__, "../output/data"))
 
 # Create moon with 18 latitude bands
 println("\nCreating moon...")
