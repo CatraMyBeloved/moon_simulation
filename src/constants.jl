@@ -18,7 +18,7 @@ const EMISSIVITY = 0.95                # Dimensionless
 
 # Heat transport - non-linear with convection
 # At low temps: only conduction (slow). At high temps: convection kicks in (fast).
-const HEAT_TRANSPORT_BASE = 10.0       # W⋅m⁻²⋅K⁻¹ (conduction only, always present)
+const HEAT_TRANSPORT_BASE = 15.0       # W⋅m⁻²⋅K⁻¹ (conduction only, always present)
 const HEAT_TRANSPORT_CONVECTION = 30.0 # W⋅m⁻²⋅K⁻¹ (additional convection, activates when warm)
 const CONVECTION_THRESHOLD = 270.0     # K (temperature where convection ramps up)
 const CONVECTION_WIDTH = 20.0          # K (transition width for tanh)
@@ -51,18 +51,19 @@ const ZONE_MIDLAT_END = 70.0
 
 # Atmospheric parameters
 const BASE_ALBEDO = 0.28
-const BASE_GREENHOUSE = 0.40
-const OPTICAL_DEPTH = 0.25
+const SOLAR_OPTICAL_DEPTH = 0.25       # Visible/UV optical depth for solar transmission
 
 # Ice-albedo feedback
 const ICE_ALBEDO = 0.60                # Increased from 0.50 (fresh snow ~0.8-0.9, sea ice ~0.5-0.7)
 const ICE_TRANSITION_WIDTH = 10.0      # K
 const FREEZING_POINT = 273.15          # K
 
-# Water vapor feedback
-const WATER_VAPOR_REF_TEMP = 273.15     # K
-const WATER_VAPOR_SCALE = 30.0         # K
-const WATER_VAPOR_STRENGTH = 0.08
+# Infrared optical depth (greenhouse effect)
+# Uses Eddington approximation: transmissivity = 2/(2+τ)
+# τ=1.0 gives ~33% greenhouse effect, τ=2.0 gives 50%
+const BASE_IR_OPTICAL_DEPTH = 1.0      # From permanent gases (CO₂-equivalent)
+const WV_OPTICAL_SCALE = 0.8           # Water vapor contribution strength
+const WV_REF_MOISTURE = 5.0            # Reference moisture for log scaling (kg/m²)
 
 # Elevation-based cooling (thinner atmosphere at altitude)
 # Greenhouse effect is reduced by this fraction at max elevation (elev=1.0)
@@ -83,15 +84,21 @@ const LAPSE_RATE = 6.5e-3               # Temperature drop per meter (K/m)
 const ELEVATION_SCALE = 5000.0          # Max elevation in meters (for normalizing)
 
 # Evaporation
-const EVAP_RATE = 0.001                 # Base evaporation rate (kg/m²/s per K above threshold)
+# Earth average: ~4 mm/day ≈ 5×10⁻⁵ kg/m²/s at typical ocean temps
+# This moon receives ~1.6× Earth's solar flux, so ~3-4× evaporation is plausible
+# At 300K: evap = 1×10⁻⁵ × 20 = 2×10⁻⁴ kg/m²/s ≈ 17 mm/day (4× Earth)
+const EVAP_RATE = 1.0e-5                # Base evaporation rate (kg/m²/s per K above threshold)
 const EVAP_THRESHOLD = 280.0            # Minimum temperature for evaporation (K)
 
 # Precipitation
-const PRECIP_RATE = 0.01                # Precipitation rate when supersaturated (1/s)
+const PRECIP_RATE = 0.001
 
 # Moisture transport
 # Note: Unlike heat transport which is divided by heat capacity (~1e6), moisture
 # transport directly affects dM/dt. So this value must be much smaller to get
 # similar timescales (hours, not milliseconds).
-const MOISTURE_DIFFUSION = 1e-5         # Base moisture diffusion coefficient (1/s)
+const MOISTURE_DIFFUSION = 1e-4       # Base moisture diffusion coefficient (1/s)
 const MOISTURE_BARRIER_STRENGTH = 6.0   # Mountains block moisture more than heat
+
+# Latent heat of vaporization (J/kg)
+const LATENT_HEAT = 2.5e6

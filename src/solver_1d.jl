@@ -26,9 +26,11 @@ function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
     for i in 1:n
         Q_in = get_solar(t, moon.latitudes[i], temps[i])
 
-        greenhouse = get_greenhouse(temps[i])
+        # IR optical depth and transmissivity (dry atmosphere for 1D)
+        τ_IR = get_ir_optical_depth()
+        transmissivity = get_ir_transmissivity(τ_IR)
 
-        Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * (1 - greenhouse)
+        Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
 
         # Use latitude-dependent heat capacity
         heat_cap = get_heat_capacity(moon.latitudes[i])

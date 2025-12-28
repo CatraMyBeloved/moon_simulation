@@ -263,6 +263,80 @@ end
 # 2D Visualization Functions
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# Plot Variable Types for Multiple Dispatch
+# -----------------------------------------------------------------------------
+
+"""
+Abstract type for plot variables. Concrete subtypes enable dispatch-based
+selection of what to plot from simulation results.
+"""
+abstract type PlotVariable end
+
+"Temperature variable (in Kelvin internally, displayed as °C)"
+struct Temperature <: PlotVariable end
+
+"Moisture/water content variable (kg/m²)"
+struct Moisture <: PlotVariable end
+
+"Precipitation rate (computed from T and M, displayed as mm/hr)"
+struct Precipitation <: PlotVariable end
+
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
+
+"""
+    _is_coupled_solution(sol, moon::MoonBody2D) -> Bool
+
+Detect if solution is from a coupled T+M simulation based on state vector size.
+"""
+function _is_coupled_solution(sol, moon::MoonBody2D)
+    n_cells = moon.n_lat * moon.n_lon
+    return length(sol.u[1]) == 2 * n_cells
+end
+
+"""
+    _extract_temperature(sol, moon::MoonBody2D, idx::Int) -> Matrix
+
+Extract temperature field from solution at time index idx.
+Auto-detects coupled vs temperature-only solutions.
+"""
+function _extract_temperature(sol, moon::MoonBody2D, idx::Int)
+    n_cells = moon.n_lat * moon.n_lon
+    if _is_coupled_solution(sol, moon)
+        return reshape(sol.u[idx][1:n_cells], moon.n_lat, moon.n_lon)
+    else
+        return reshape(sol.u[idx], moon.n_lat, moon.n_lon)
+    end
+end
+
+"""
+    _extract_moisture(sol, moon::MoonBody2D, idx::Int) -> Matrix
+
+Extract moisture field from coupled solution at time index idx.
+"""
+function _extract_moisture(sol, moon::MoonBody2D, idx::Int)
+    n_cells = moon.n_lat * moon.n_lon
+    return reshape(sol.u[idx][n_cells+1:end], moon.n_lat, moon.n_lon)
+end
+
+"""
+    _compute_precipitation(T_2d, M_2d, moon::MoonBody2D) -> Matrix
+
+Compute precipitation field from temperature and moisture.
+Returns precipitation in kg/m²/s.
+"""
+function _compute_precipitation(T_2d, M_2d, moon::MoonBody2D)
+    precip = zeros(moon.n_lat, moon.n_lon)
+    for i in 1:moon.n_lat
+        for j in 1:moon.n_lon
+            precip[i, j] = get_precipitation(M_2d[i, j], T_2d[i, j], moon.elevation[i, j])
+        end
+    end
+    return precip
+end
+
 """
     add_eclipse_shading!(t_start_hr, t_end_hr)
 
@@ -283,41 +357,112 @@ function add_eclipse_shading!(t_start_hr, t_end_hr)
     end
 end
 
-"""
-    plot_global_mean_full(sol, moon::MoonBody2D)
+# -----------------------------------------------------------------------------
+# Plot Configuration by Variable Type
+# -----------------------------------------------------------------------------
 
-Plot global mean temperature for the ENTIRE simulation.
-Use this to check if the simulation has reached equilibrium.
+_plot_color(::Type{Temperature}) = :red
+_plot_color(::Type{Moisture}) = :blue
+_plot_color(::Type{Precipitation}) = :teal
+
+_heatmap_color(::Type{Temperature}) = :thermal
+_heatmap_color(::Type{Moisture}) = :Blues
+_heatmap_color(::Type{Precipitation}) = :YlGnBu
+
+_ylabel(::Type{Temperature}) = "Temperature (°C)"
+_ylabel(::Type{Moisture}) = "Moisture (kg/m²)"
+_ylabel(::Type{Precipitation}) = "Precipitation (mm/hr)"
+
+_colorbar_title(::Type{Temperature}) = "°C"
+_colorbar_title(::Type{Moisture}) = "kg/m²"
+_colorbar_title(::Type{Precipitation}) = "mm/hr"
+
+_variable_name(::Type{Temperature}) = "Temperature"
+_variable_name(::Type{Moisture}) = "Moisture"
+_variable_name(::Type{Precipitation}) = "Precipitation"
+
+# -----------------------------------------------------------------------------
+# Global Mean Plots
+# -----------------------------------------------------------------------------
+
 """
-function plot_global_mean_full(sol, moon::MoonBody2D)
+    plot_global_mean_full(sol, moon::MoonBody2D, [variable])
+
+Plot global mean for the ENTIRE simulation.
+- `variable`: Temperature (default), Moisture, or Precipitation
+"""
+function plot_global_mean_full(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature)
     times_hr = sol.t ./ 3600
 
-    # Compute global mean at each timestep
-    global_temps_C = Float64[]
+    global_vals = Float64[]
     for i in 1:length(sol.t)
-        T_2d = reshape(sol.u[i], moon.n_lat, moon.n_lon)
-        push!(global_temps_C, sum(T_2d .* moon.cell_areas) - 273.15)
+        T_2d = _extract_temperature(sol, moon, i)
+        push!(global_vals, sum(T_2d .* moon.cell_areas) - 273.15)
     end
 
-    p = plot(times_hr, global_temps_C,
+    p = plot(times_hr, global_vals,
         xlabel="Time (hours)",
         ylabel="Global Mean Temperature (°C)",
         title="Global Mean Temperature - Full Simulation",
         linewidth=1.5,
         legend=false,
-        color=:red,
+        color=_plot_color(Temperature),
+        size=(1000, 400))
+
+    return p
+end
+
+function plot_global_mean_full(sol, moon::MoonBody2D, ::Type{Moisture})
+    times_hr = sol.t ./ 3600
+
+    global_vals = Float64[]
+    for i in 1:length(sol.t)
+        M_2d = _extract_moisture(sol, moon, i)
+        push!(global_vals, sum(M_2d .* moon.cell_areas))
+    end
+
+    p = plot(times_hr, global_vals,
+        xlabel="Time (hours)",
+        ylabel="Global Mean Moisture (kg/m²)",
+        title="Global Mean Moisture - Full Simulation",
+        linewidth=1.5,
+        legend=false,
+        color=_plot_color(Moisture),
+        size=(1000, 400))
+
+    return p
+end
+
+function plot_global_mean_full(sol, moon::MoonBody2D, ::Type{Precipitation})
+    times_hr = sol.t ./ 3600
+
+    global_vals = Float64[]
+    for i in 1:length(sol.t)
+        T_2d = _extract_temperature(sol, moon, i)
+        M_2d = _extract_moisture(sol, moon, i)
+        precip = _compute_precipitation(T_2d, M_2d, moon)
+        push!(global_vals, sum(precip .* moon.cell_areas) * 3600)  # to mm/hr
+    end
+
+    p = plot(times_hr, global_vals,
+        xlabel="Time (hours)",
+        ylabel="Global Mean Precipitation (mm/hr)",
+        title="Global Mean Precipitation - Full Simulation",
+        linewidth=1.5,
+        legend=false,
+        color=_plot_color(Precipitation),
         size=(1000, 400))
 
     return p
 end
 
 """
-    plot_global_mean_detail(sol, moon::MoonBody2D; hours=800)
+    plot_global_mean_detail(sol, moon::MoonBody2D, [variable]; hours=800)
 
-Plot global mean temperature for the last N hours.
-Shows eclipse impacts clearly with shading.
+Plot global mean for the last N hours with eclipse shading.
+- `variable`: Temperature (default), Moisture, or Precipitation
 """
-function plot_global_mean_detail(sol, moon::MoonBody2D; hours=800)
+function plot_global_mean_detail(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature; hours=800)
     t_end = sol.t[end]
     t_start = max(0.0, t_end - hours * 3600)
     start_idx = findfirst(t -> t >= t_start, sol.t)
@@ -325,49 +470,103 @@ function plot_global_mean_detail(sol, moon::MoonBody2D; hours=800)
 
     times_hr = sol.t[start_idx:end] ./ 3600
 
-    # Compute global mean at each timestep
-    global_temps_C = Float64[]
+    global_vals = Float64[]
     for i in start_idx:length(sol.t)
-        T_2d = reshape(sol.u[i], moon.n_lat, moon.n_lon)
-        push!(global_temps_C, sum(T_2d .* moon.cell_areas) - 273.15)
+        T_2d = _extract_temperature(sol, moon, i)
+        push!(global_vals, sum(T_2d .* moon.cell_areas) - 273.15)
     end
 
-    p = plot(times_hr, global_temps_C,
+    p = plot(times_hr, global_vals,
         xlabel="Time (hours)",
         ylabel="Global Mean Temperature (°C)",
         title="Global Mean Temperature - Last $(hours) hours",
         linewidth=2,
         legend=false,
-        color=:red,
+        color=_plot_color(Temperature),
         size=(1000, 400))
 
     add_eclipse_shading!(times_hr[1], times_hr[end])
-
     return p
 end
 
-"""
-    plot_snapshot(sol, moon::MoonBody2D; time_idx=-1)
+function plot_global_mean_detail(sol, moon::MoonBody2D, ::Type{Moisture}; hours=800)
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
 
-Single heatmap snapshot of temperature across the globe.
-Uses percentile-based color limits to preserve detail in equatorial regions
-despite very cold poles. Uses 30th percentile cutoff and enhanced contrast
-colormap to make differences at higher temperatures more visible.
+    times_hr = sol.t[start_idx:end] ./ 3600
+
+    global_vals = Float64[]
+    for i in start_idx:length(sol.t)
+        M_2d = _extract_moisture(sol, moon, i)
+        push!(global_vals, sum(M_2d .* moon.cell_areas))
+    end
+
+    p = plot(times_hr, global_vals,
+        xlabel="Time (hours)",
+        ylabel="Global Mean Moisture (kg/m²)",
+        title="Global Mean Moisture - Last $(hours) hours",
+        linewidth=2,
+        legend=false,
+        color=_plot_color(Moisture),
+        size=(1000, 400))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
+
+function plot_global_mean_detail(sol, moon::MoonBody2D, ::Type{Precipitation}; hours=800)
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+
+    global_vals = Float64[]
+    for i in start_idx:length(sol.t)
+        T_2d = _extract_temperature(sol, moon, i)
+        M_2d = _extract_moisture(sol, moon, i)
+        precip = _compute_precipitation(T_2d, M_2d, moon)
+        push!(global_vals, sum(precip .* moon.cell_areas) * 3600)
+    end
+
+    p = plot(times_hr, global_vals,
+        xlabel="Time (hours)",
+        ylabel="Global Mean Precipitation (mm/hr)",
+        title="Global Mean Precipitation - Last $(hours) hours",
+        linewidth=2,
+        legend=false,
+        color=_plot_color(Precipitation),
+        size=(1000, 400))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
+
+# -----------------------------------------------------------------------------
+# Snapshot Plots
+# -----------------------------------------------------------------------------
+
 """
-function plot_snapshot(sol, moon::MoonBody2D; time_idx=-1)
+    plot_snapshot(sol, moon::MoonBody2D, [variable]; time_idx=-1)
+
+Single heatmap snapshot at a specific time.
+- `variable`: Temperature (default), Moisture, or Precipitation
+- `time_idx`: Time index (-1 for final state)
+"""
+function plot_snapshot(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature; time_idx=-1)
     idx = time_idx < 0 ? length(sol.t) : time_idx
-    T_2d = reshape(sol.u[idx], moon.n_lat, moon.n_lon) .- 273.15
+    T_2d = _extract_temperature(sol, moon, idx) .- 273.15
 
-    # Use 30th percentile as lower limit to compress cold polar regions
-    # and give more color range to warmer equatorial areas
-    sorted_temps = sort(vec(T_2d))
-    n = length(sorted_temps)
-    p30 = sorted_temps[max(1, div(3 * n, 10))]  # 30th percentile
-    p98 = sorted_temps[max(1, div(98 * n, 100))]  # 98th percentile (avoid outliers)
+    sorted_vals = sort(vec(T_2d))
+    n = length(sorted_vals)
+    p30 = sorted_vals[max(1, div(3 * n, 10))]
+    p98 = sorted_vals[max(1, div(98 * n, 100))]
 
     time_hr = round(sol.t[idx] / 3600, digits=1)
 
-    # Use inferno colormap - better perceptual uniformity at high end
     p = heatmap(moon.longitudes, moon.latitudes, T_2d,
         xlabel="Longitude (°)",
         ylabel="Latitude (°)",
@@ -380,16 +579,59 @@ function plot_snapshot(sol, moon::MoonBody2D; time_idx=-1)
     return p
 end
 
-"""
-    plot_hovmoeller_longitude(sol, moon::MoonBody2D; lat_idx=nothing, hours=280)
+function plot_snapshot(sol, moon::MoonBody2D, ::Type{Moisture}; time_idx=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+    M_2d = _extract_moisture(sol, moon, idx)
 
-Time-Longitude (Hovmöller) diagram at a specific latitude (default: equator).
-X-axis: time, Y-axis: longitude, color: temperature.
-Shows the day/night terminator moving across longitudes over time.
-Default 280 hours = 10 rotation periods (10 days).
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    p = heatmap(moon.longitudes, moon.latitudes, M_2d,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Moisture (t = $(time_hr) hr)",
+        color=:Blues,
+        colorbar_title="kg/m²",
+        size=(1000, 500))
+
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+function plot_snapshot(sol, moon::MoonBody2D, ::Type{Precipitation}; time_idx=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+    T_2d = _extract_temperature(sol, moon, idx)
+    M_2d = _extract_moisture(sol, moon, idx)
+    precip_mm_hr = _compute_precipitation(T_2d, M_2d, moon) .* 3600
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    p = heatmap(moon.longitudes, moon.latitudes, precip_mm_hr,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Precipitation Rate (t = $(time_hr) hr)",
+        color=:YlGnBu,
+        colorbar_title="mm/hr",
+        size=(1000, 500))
+
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+# -----------------------------------------------------------------------------
+# Hovmöller Diagrams
+# -----------------------------------------------------------------------------
+
 """
-function plot_hovmoeller_longitude(sol, moon::MoonBody2D; lat_idx=nothing, hours=280)
-    # Default to equator
+    plot_hovmoeller_longitude(sol, moon::MoonBody2D, [variable]; lat_idx=nothing, hours=280)
+
+Time-Longitude Hovmöller diagram at a specific latitude (default: equator).
+- `variable`: Temperature (default), Moisture, or Precipitation
+"""
+function plot_hovmoeller_longitude(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature; lat_idx=nothing, hours=280)
     if lat_idx === nothing
         lat_idx = argmin(abs.(moon.latitudes))
     end
@@ -400,41 +642,103 @@ function plot_hovmoeller_longitude(sol, moon::MoonBody2D; lat_idx=nothing, hours
     start_idx = isnothing(start_idx) ? 1 : start_idx
 
     n_times = length(sol.t) - start_idx + 1
-    n_lon = moon.n_lon
+    data_matrix = zeros(moon.n_lon, n_times)
 
-    # Build matrix: rows = longitude, cols = time
-    temps_matrix = zeros(n_lon, n_times)
     for (col, i) in enumerate(start_idx:length(sol.t))
-        T_2d = reshape(sol.u[i], moon.n_lat, moon.n_lon)
-        temps_matrix[:, col] = T_2d[lat_idx, :] .- 273.15
+        T_2d = _extract_temperature(sol, moon, i)
+        data_matrix[:, col] = T_2d[lat_idx, :] .- 273.15
     end
 
     times_hr = sol.t[start_idx:end] ./ 3600
     lat_deg = round(moon.latitudes[lat_idx], digits=1)
 
-    p = heatmap(times_hr, moon.longitudes, temps_matrix,
+    p = heatmap(times_hr, moon.longitudes, data_matrix,
         xlabel="Time (hours)",
         ylabel="Longitude (°)",
-        title="Time-Longitude at Latitude $(lat_deg)°",
-        color=:thermal,
-        colorbar_title="°C",
+        title="Time-Longitude Temperature at Latitude $(lat_deg)°",
+        color=_heatmap_color(Temperature),
+        colorbar_title=_colorbar_title(Temperature),
         size=(1000, 500))
 
     add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
 
+function plot_hovmoeller_longitude(sol, moon::MoonBody2D, ::Type{Moisture}; lat_idx=nothing, hours=280)
+    if lat_idx === nothing
+        lat_idx = argmin(abs.(moon.latitudes))
+    end
+
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    n_times = length(sol.t) - start_idx + 1
+    data_matrix = zeros(moon.n_lon, n_times)
+
+    for (col, i) in enumerate(start_idx:length(sol.t))
+        M_2d = _extract_moisture(sol, moon, i)
+        data_matrix[:, col] = M_2d[lat_idx, :]
+    end
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+    lat_deg = round(moon.latitudes[lat_idx], digits=1)
+
+    p = heatmap(times_hr, moon.longitudes, data_matrix,
+        xlabel="Time (hours)",
+        ylabel="Longitude (°)",
+        title="Time-Longitude Moisture at Latitude $(lat_deg)°",
+        color=_heatmap_color(Moisture),
+        colorbar_title=_colorbar_title(Moisture),
+        size=(1000, 500))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
+
+function plot_hovmoeller_longitude(sol, moon::MoonBody2D, ::Type{Precipitation}; lat_idx=nothing, hours=280)
+    if lat_idx === nothing
+        lat_idx = argmin(abs.(moon.latitudes))
+    end
+
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    n_times = length(sol.t) - start_idx + 1
+    data_matrix = zeros(moon.n_lon, n_times)
+
+    for (col, i) in enumerate(start_idx:length(sol.t))
+        T_2d = _extract_temperature(sol, moon, i)
+        M_2d = _extract_moisture(sol, moon, i)
+        precip = _compute_precipitation(T_2d, M_2d, moon)
+        data_matrix[:, col] = precip[lat_idx, :] .* 3600
+    end
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+    lat_deg = round(moon.latitudes[lat_idx], digits=1)
+
+    p = heatmap(times_hr, moon.longitudes, data_matrix,
+        xlabel="Time (hours)",
+        ylabel="Longitude (°)",
+        title="Time-Longitude Precipitation at Latitude $(lat_deg)°",
+        color=_heatmap_color(Precipitation),
+        colorbar_title=_colorbar_title(Precipitation),
+        size=(1000, 500))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
     return p
 end
 
 """
-    plot_hovmoeller_latitude(sol, moon::MoonBody2D; lon_idx=nothing, hours=280)
+    plot_hovmoeller_latitude(sol, moon::MoonBody2D, [variable]; lon_idx=nothing, hours=280)
 
-Time-Latitude (Hovmöller) diagram at a specific longitude (default: subsolar point, lon=0°).
-X-axis: time, Y-axis: latitude, color: temperature.
-Shows temperature evolution across latitudes over time.
-Default 280 hours = 10 rotation periods (10 days).
+Time-Latitude Hovmöller diagram at a specific longitude (default: subsolar point).
+- `variable`: Temperature (default), Moisture, or Precipitation
 """
-function plot_hovmoeller_latitude(sol, moon::MoonBody2D; lon_idx=nothing, hours=280)
-    # Default to subsolar longitude (0°)
+function plot_hovmoeller_latitude(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature; lon_idx=nothing, hours=280)
     if lon_idx === nothing
         lon_idx = argmin(abs.(moon.longitudes))
     end
@@ -445,67 +749,137 @@ function plot_hovmoeller_latitude(sol, moon::MoonBody2D; lon_idx=nothing, hours=
     start_idx = isnothing(start_idx) ? 1 : start_idx
 
     n_times = length(sol.t) - start_idx + 1
-    n_lat = moon.n_lat
+    data_matrix = zeros(moon.n_lat, n_times)
 
-    # Build matrix: rows = latitude, cols = time
-    temps_matrix = zeros(n_lat, n_times)
     for (col, i) in enumerate(start_idx:length(sol.t))
-        T_2d = reshape(sol.u[i], moon.n_lat, moon.n_lon)
-        temps_matrix[:, col] = T_2d[:, lon_idx] .- 273.15
+        T_2d = _extract_temperature(sol, moon, i)
+        data_matrix[:, col] = T_2d[:, lon_idx] .- 273.15
     end
 
     times_hr = sol.t[start_idx:end] ./ 3600
     lon_deg = round(moon.longitudes[lon_idx], digits=1)
 
-    p = heatmap(times_hr, moon.latitudes, temps_matrix,
+    p = heatmap(times_hr, moon.latitudes, data_matrix,
         xlabel="Time (hours)",
         ylabel="Latitude (°)",
-        title="Time-Latitude at Longitude $(lon_deg)°",
-        color=:thermal,
-        colorbar_title="°C",
+        title="Time-Latitude Temperature at Longitude $(lon_deg)°",
+        color=_heatmap_color(Temperature),
+        colorbar_title=_colorbar_title(Temperature),
         size=(1000, 500))
 
     add_eclipse_shading!(times_hr[1], times_hr[end])
-
     return p
 end
 
-"""
-    plot_latitude_mean_range(sol, moon::MoonBody2D)
+function plot_hovmoeller_latitude(sol, moon::MoonBody2D, ::Type{Moisture}; lon_idx=nothing, hours=280)
+    if lon_idx === nothing
+        lon_idx = argmin(abs.(moon.longitudes))
+    end
 
-Plot temperature by latitude with mean and min/max range.
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    n_times = length(sol.t) - start_idx + 1
+    data_matrix = zeros(moon.n_lat, n_times)
+
+    for (col, i) in enumerate(start_idx:length(sol.t))
+        M_2d = _extract_moisture(sol, moon, i)
+        data_matrix[:, col] = M_2d[:, lon_idx]
+    end
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+    lon_deg = round(moon.longitudes[lon_idx], digits=1)
+
+    p = heatmap(times_hr, moon.latitudes, data_matrix,
+        xlabel="Time (hours)",
+        ylabel="Latitude (°)",
+        title="Time-Latitude Moisture at Longitude $(lon_deg)°",
+        color=_heatmap_color(Moisture),
+        colorbar_title=_colorbar_title(Moisture),
+        size=(1000, 500))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
+
+function plot_hovmoeller_latitude(sol, moon::MoonBody2D, ::Type{Precipitation}; lon_idx=nothing, hours=280)
+    if lon_idx === nothing
+        lon_idx = argmin(abs.(moon.longitudes))
+    end
+
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    n_times = length(sol.t) - start_idx + 1
+    data_matrix = zeros(moon.n_lat, n_times)
+
+    for (col, i) in enumerate(start_idx:length(sol.t))
+        T_2d = _extract_temperature(sol, moon, i)
+        M_2d = _extract_moisture(sol, moon, i)
+        precip = _compute_precipitation(T_2d, M_2d, moon)
+        data_matrix[:, col] = precip[:, lon_idx] .* 3600
+    end
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+    lon_deg = round(moon.longitudes[lon_idx], digits=1)
+
+    p = heatmap(times_hr, moon.latitudes, data_matrix,
+        xlabel="Time (hours)",
+        ylabel="Latitude (°)",
+        title="Time-Latitude Precipitation at Longitude $(lon_deg)°",
+        color=_heatmap_color(Precipitation),
+        colorbar_title=_colorbar_title(Precipitation),
+        size=(1000, 500))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+    return p
+end
+
+# -----------------------------------------------------------------------------
+# Latitude Mean + Range Plots
+# -----------------------------------------------------------------------------
+
 """
-function plot_latitude_mean_range(sol, moon::MoonBody2D)
+    plot_latitude_mean_range(sol, moon::MoonBody2D, [variable])
+
+Plot variable by latitude with mean and min/max range.
+- `variable`: Temperature (default) or Moisture
+"""
+function plot_latitude_mean_range(sol, moon::MoonBody2D, ::Type{Temperature}=Temperature)
     n_start = max(1, length(sol.t) - div(length(sol.t), 5))
     n_lat = moon.n_lat
 
-    temps_mean = zeros(n_lat)
-    temps_min = zeros(n_lat)
-    temps_max = zeros(n_lat)
+    vals_mean = zeros(n_lat)
+    vals_min = zeros(n_lat)
+    vals_max = zeros(n_lat)
 
     for i in 1:n_lat
-        all_temps = Float64[]
+        all_vals = Float64[]
         for j in n_start:length(sol.t)
-            T_2d = reshape(sol.u[j], moon.n_lat, moon.n_lon)
-            append!(all_temps, T_2d[i, :])
+            T_2d = _extract_temperature(sol, moon, j)
+            append!(all_vals, T_2d[i, :])
         end
-        temps_mean[i] = mean(all_temps) - 273.15
-        temps_min[i] = minimum(all_temps) - 273.15
-        temps_max[i] = maximum(all_temps) - 273.15
+        vals_mean[i] = mean(all_vals) - 273.15
+        vals_min[i] = minimum(all_vals) - 273.15
+        vals_max[i] = maximum(all_vals) - 273.15
     end
 
-    p = plot(moon.latitudes, temps_mean,
+    p = plot(moon.latitudes, vals_mean,
         xlabel="Latitude (°)",
         ylabel="Temperature (°C)",
         title="Temperature by Latitude (Mean + Range)",
         linewidth=3,
-        color=:red,
+        color=_plot_color(Temperature),
         label="Mean",
         legend=:topright,
         size=(800, 500))
 
-    plot!(moon.latitudes, temps_min,
-        fillrange=temps_max,
+    plot!(moon.latitudes, vals_min,
+        fillrange=vals_max,
         fillalpha=0.2,
         fillcolor=:orange,
         linewidth=1,
@@ -519,11 +893,55 @@ function plot_latitude_mean_range(sol, moon::MoonBody2D)
     return p
 end
 
+function plot_latitude_mean_range(sol, moon::MoonBody2D, ::Type{Moisture})
+    n_start = max(1, length(sol.t) - div(length(sol.t), 5))
+    n_lat = moon.n_lat
+
+    vals_mean = zeros(n_lat)
+    vals_min = zeros(n_lat)
+    vals_max = zeros(n_lat)
+
+    for i in 1:n_lat
+        all_vals = Float64[]
+        for j in n_start:length(sol.t)
+            M_2d = _extract_moisture(sol, moon, j)
+            append!(all_vals, M_2d[i, :])
+        end
+        vals_mean[i] = mean(all_vals)
+        vals_min[i] = minimum(all_vals)
+        vals_max[i] = maximum(all_vals)
+    end
+
+    p = plot(moon.latitudes, vals_mean,
+        xlabel="Latitude (°)",
+        ylabel="Moisture (kg/m²)",
+        title="Moisture by Latitude (Mean + Range)",
+        linewidth=3,
+        color=_plot_color(Moisture),
+        label="Mean",
+        legend=:topright,
+        size=(800, 500))
+
+    plot!(moon.latitudes, vals_min,
+        fillrange=vals_max,
+        fillalpha=0.2,
+        fillcolor=:lightblue,
+        linewidth=1,
+        linestyle=:dash,
+        color=:lightblue,
+        label="Min/Max Range")
+
+    return p
+end
+
+# -----------------------------------------------------------------------------
+# Terrain Map (no variable dispatch needed)
+# -----------------------------------------------------------------------------
+
 """
     plot_elevation_map(moon::MoonBody2D)
 
 Create a heatmap of terrain elevation with coastline contour.
-Ocean (elevation < 0) shown in blue tones, land in terrain colors.
 """
 function plot_elevation_map(moon::MoonBody2D)
     p = heatmap(moon.longitudes, moon.latitudes, moon.elevation,
@@ -534,132 +952,8 @@ function plot_elevation_map(moon::MoonBody2D)
         colorbar_title="Elevation",
         size=(1000, 500))
 
-    # Add coastline (elevation = 0)
     contour!(moon.longitudes, moon.latitudes, moon.elevation,
         levels=[0.0], color=:black, linewidth=1, label="")
-
-    return p
-end
-
-# =============================================================================
-# Moisture Visualization (for coupled T+M simulations)
-# =============================================================================
-
-"""
-    plot_moisture_snapshot(sol, moon::MoonBody2D; time_idx=-1)
-
-Plot moisture distribution at a specific time from a coupled simulation.
-Expects solution from `run_simulation_moisture` with state layout [T..., M...].
-
-# Arguments
-- `sol`: Solution from run_simulation_moisture
-- `moon`: MoonBody2D structure
-- `time_idx`: Time index (-1 for final state)
-"""
-function plot_moisture_snapshot(sol, moon::MoonBody2D; time_idx::Int=-1)
-    idx = time_idx < 0 ? length(sol.t) : time_idx
-    n_cells = moon.n_lat * moon.n_lon
-
-    # Extract moisture (second half of state vector)
-    M_2d = reshape(sol.u[idx][n_cells+1:end], moon.n_lat, moon.n_lon)
-
-    time_hr = round(sol.t[idx] / 3600, digits=1)
-
-    p = heatmap(moon.longitudes, moon.latitudes, M_2d,
-        xlabel="Longitude (°)",
-        ylabel="Latitude (°)",
-        title="Moisture (t = $(time_hr) hr)",
-        color=:Blues,
-        colorbar_title="kg/m²",
-        size=(1000, 500))
-
-    # Add coastline
-    contour!(moon.longitudes, moon.latitudes, moon.elevation,
-        levels=[0.0], color=:black, linewidth=1, label="")
-
-    return p
-end
-
-"""
-    plot_precipitation_snapshot(sol, moon::MoonBody2D; time_idx=-1)
-
-Plot instantaneous precipitation rate at a specific time.
-Computes precipitation from temperature and moisture state.
-
-# Arguments
-- `sol`: Solution from run_simulation_moisture
-- `moon`: MoonBody2D structure
-- `time_idx`: Time index (-1 for final state)
-"""
-function plot_precipitation_snapshot(sol, moon::MoonBody2D; time_idx::Int=-1)
-    idx = time_idx < 0 ? length(sol.t) : time_idx
-    n_cells = moon.n_lat * moon.n_lon
-
-    T_2d = reshape(sol.u[idx][1:n_cells], moon.n_lat, moon.n_lon)
-    M_2d = reshape(sol.u[idx][n_cells+1:end], moon.n_lat, moon.n_lon)
-
-    # Compute precipitation at each cell
-    precip = zeros(moon.n_lat, moon.n_lon)
-    for i in 1:moon.n_lat
-        for j in 1:moon.n_lon
-            precip[i, j] = get_precipitation(M_2d[i, j], T_2d[i, j], moon.elevation[i, j])
-        end
-    end
-
-    # Convert to mm/hour (kg/m² per second → mm per hour)
-    precip_mm_hr = precip .* 3600
-
-    time_hr = round(sol.t[idx] / 3600, digits=1)
-
-    p = heatmap(moon.longitudes, moon.latitudes, precip_mm_hr,
-        xlabel="Longitude (°)",
-        ylabel="Latitude (°)",
-        title="Precipitation Rate (t = $(time_hr) hr)",
-        color=:YlGnBu,
-        colorbar_title="mm/hr",
-        size=(1000, 500))
-
-    # Add coastline
-    contour!(moon.longitudes, moon.latitudes, moon.elevation,
-        levels=[0.0], color=:black, linewidth=1, label="")
-
-    return p
-end
-
-"""
-    plot_temperature_snapshot_moisture(sol, moon::MoonBody2D; time_idx=-1)
-
-Plot temperature distribution from a coupled T+M simulation.
-Use this instead of plot_snapshot when working with moisture simulations.
-
-# Arguments
-- `sol`: Solution from run_simulation_moisture
-- `moon`: MoonBody2D structure
-- `time_idx`: Time index (-1 for final state)
-"""
-function plot_temperature_snapshot_moisture(sol, moon::MoonBody2D; time_idx::Int=-1)
-    idx = time_idx < 0 ? length(sol.t) : time_idx
-    n_cells = moon.n_lat * moon.n_lon
-
-    # Extract temperature (first half of state vector)
-    T_2d = reshape(sol.u[idx][1:n_cells], moon.n_lat, moon.n_lon) .- 273.15
-
-    # Percentile-based color limits
-    sorted_temps = sort(vec(T_2d))
-    n = length(sorted_temps)
-    p30 = sorted_temps[max(1, div(3 * n, 10))]
-    p98 = sorted_temps[max(1, div(98 * n, 100))]
-
-    time_hr = round(sol.t[idx] / 3600, digits=1)
-
-    p = heatmap(moon.longitudes, moon.latitudes, T_2d,
-        xlabel="Longitude (°)",
-        ylabel="Latitude (°)",
-        title="Temperature Snapshot (t = $(time_hr) hr)",
-        color=:inferno,
-        clims=(p30, p98),
-        colorbar_title="°C",
-        size=(1000, 500))
 
     return p
 end

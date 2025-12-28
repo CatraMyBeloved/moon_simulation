@@ -99,15 +99,15 @@ println("="^60)
 mkpath("output/plots_2d")
 
 println("  Creating global mean (full simulation)...")
-p1 = plot_global_mean_full(sol, moon)
+p1 = plot_global_mean_full(sol, moon, Temperature)
 savefig(p1, "output/plots_2d/global_mean_full.png")
 
 println("  Creating global mean (last 800h detail)...")
-p2 = plot_global_mean_detail(sol, moon, hours=800)
+p2 = plot_global_mean_detail(sol, moon, Temperature, hours=800)
 savefig(p2, "output/plots_2d/global_mean_detail.png")
 
 println("  Creating temperature snapshot...")
-p3 = plot_snapshot(sol, moon)
+p3 = plot_snapshot(sol, moon, Temperature)
 savefig(p3, "output/plots_2d/snapshot.png")
 
 println("  Creating terrain map...")
@@ -115,13 +115,13 @@ p_terrain = plot_elevation_map(moon)
 savefig(p_terrain, "output/plots_2d/terrain.png")
 
 println("  Creating Hovmöller diagrams...")
-p4a = plot_hovmoeller_longitude(sol, moon)
+p4a = plot_hovmoeller_longitude(sol, moon, Temperature)
 savefig(p4a, "output/plots_2d/hovmoeller_longitude.png")
-p4b = plot_hovmoeller_latitude(sol, moon)
+p4b = plot_hovmoeller_latitude(sol, moon, Temperature)
 savefig(p4b, "output/plots_2d/hovmoeller_latitude.png")
 
 println("  Creating latitude profile...")
-p5 = plot_latitude_mean_range(sol, moon)
+p5 = plot_latitude_mean_range(sol, moon, Temperature)
 savefig(p5, "output/plots_2d/latitude_range.png")
 
 println("\n" * "="^60)

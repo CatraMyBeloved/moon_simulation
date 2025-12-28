@@ -64,7 +64,7 @@ function get_solar(t::Real, lat_deg::Real, T::Real)
     cos_zenith = cos(zenith)
     albedo = get_albedo(T)
     air_mass = 1.0 / (cos_zenith + 0.01)
-    transmission = exp(-OPTICAL_DEPTH * air_mass)
+    transmission = exp(-SOLAR_OPTICAL_DEPTH * air_mass)
 
     return SOLAR_CONSTANT * cos_zenith * (1 - albedo) * transmission
 end
@@ -118,7 +118,7 @@ function get_solar_2d(t::Real, lat_deg::Real, lon_deg::Real, T::Real)
     cos_zenith = cos(zenith)
     albedo = get_albedo(T)
     air_mass = 1.0 / (cos_zenith + 0.01)
-    transmission = exp(-OPTICAL_DEPTH * air_mass)
+    transmission = exp(-SOLAR_OPTICAL_DEPTH * air_mass)
 
     return SOLAR_CONSTANT * cos_zenith * (1 - albedo) * transmission
 end

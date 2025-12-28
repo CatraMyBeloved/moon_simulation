@@ -8,13 +8,13 @@ Physics functions: albedo, greenhouse effect, feedbacks, material properties
 Return heat capacity (J⋅m⁻²⋅K⁻¹) for a given latitude.
 
 The heat capacity varies by zone to reflect different surface types:
-- Equatorial (0-30°): Ocean/wetland with high thermal inertia
+- Equatorial (0-30°): Hot, dry land with low thermal inertia (fast response)
 - Mid-latitude (30-60°): Mixed terrain with moderate thermal inertia
-- Polar (60-90°): Dry ice/rock with low thermal inertia
+- Polar (60-90°): Ice sheets and frozen ocean with high thermal inertia (slow response)
 
 This creates realistic thermal response differences: equatorial regions
-change temperature slowly (buffered by water), while polar regions
-respond quickly to changes in solar input.
+respond quickly to diurnal heating cycles, while polar ice masses
+change temperature slowly due to their large thermal mass.
 """
 function get_heat_capacity(lat_deg::Real)
     abs_lat = abs(lat_deg)
@@ -113,23 +113,67 @@ function get_albedo(T::Real)
 end
 
 """
-    get_greenhouse(T)
+    get_ir_optical_depth(M)
 
-Calculate greenhouse effect with water vapor feedback.
+Calculate infrared optical depth from atmospheric composition.
 
-Uses a tanh function to model increased water vapor at higher temperatures,
-which strengthens the greenhouse effect.
+The optical depth determines how opaque the atmosphere is to thermal radiation.
+Higher τ = more absorption = stronger greenhouse effect.
 
 # Arguments
-- `T`: Temperature in Kelvin
+- `M`: Moisture content in kg/m² (water vapor contribution)
 
 # Returns
-- Greenhouse factor (0-1), higher = more heat trapped
+- IR optical depth τ (dimensionless, typically 0.5-3.0)
 """
-function get_greenhouse(T::Real)
-    temperature_delta = T - WATER_VAPOR_REF_TEMP
-    water_vapor_boost = WATER_VAPOR_STRENGTH * tanh(temperature_delta / WATER_VAPOR_SCALE)
-    return clamp(BASE_GREENHOUSE + water_vapor_boost, 0.2, 0.85)
+function get_ir_optical_depth(M::Real)
+    # Base optical depth from permanent gases (CO₂, CH₄, etc.)
+    τ_base = BASE_IR_OPTICAL_DEPTH
+
+    # Water vapor adds optical depth (log scale - diminishing returns at high M)
+    # At M=5 kg/m²: adds ~0.55, at M=20 kg/m²: adds ~1.2
+    τ_wv = WV_OPTICAL_SCALE * log(1 + max(0.0, M) / WV_REF_MOISTURE)
+
+    return τ_base + τ_wv
+end
+
+"""
+    get_ir_optical_depth()
+
+Calculate infrared optical depth for dry atmosphere (no moisture tracking).
+Uses base optical depth only.
+
+# Returns
+- IR optical depth τ (dimensionless)
+"""
+function get_ir_optical_depth()
+    return BASE_IR_OPTICAL_DEPTH
+end
+
+"""
+    get_ir_transmissivity(τ)
+
+Calculate fraction of surface IR radiation that escapes to space.
+
+Uses the Eddington approximation for a gray atmosphere:
+    transmissivity = 2 / (2 + τ)
+
+This comes from solving the two-stream radiative transfer equations.
+
+# Arguments
+- `τ`: IR optical depth
+
+# Returns
+- Transmissivity (0-1), fraction of surface emission reaching space
+
+# Examples
+- τ = 0: transmissivity = 1.0 (no atmosphere, all escapes)
+- τ = 1: transmissivity = 0.67 (33% blocked)
+- τ = 2: transmissivity = 0.50 (50% blocked)
+- τ = 4: transmissivity = 0.33 (67% blocked)
+"""
+function get_ir_transmissivity(τ::Real)
+    return 2.0 / (2.0 + τ)
 end
 
 # =============================================================================

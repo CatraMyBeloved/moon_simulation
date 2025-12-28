@@ -67,11 +67,12 @@ function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
             # Solar heating: depends on time, position, and albedo (temperature-dependent)
             Q_in = get_solar_2d(t, lat, lon, T_cell)
 
-            # Greenhouse effect reduced at altitude (thinner atmosphere)
-            greenhouse = get_greenhouse(T_cell)
-            greenhouse_effective = greenhouse * (1 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+            # IR optical depth reduced at altitude (thinner atmosphere)
+            τ_IR = get_ir_optical_depth()
+            τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+            transmissivity = get_ir_transmissivity(τ_effective)
 
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1 - greenhouse_effective)
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
 
             # Use elevation to determine land vs ocean heat capacity
             heat_cap = get_heat_capacity(lat, lon, elev)
@@ -213,18 +214,23 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
             # --- Temperature equation ---
             Q_in = get_solar_2d(t, lat, lon, T_cell)
 
-            # Greenhouse effect reduced at altitude (thinner atmosphere)
-            greenhouse = get_greenhouse(T_cell)
-            greenhouse_effective = greenhouse * (1 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+            # IR optical depth from moisture content, reduced at altitude
+            τ_IR = get_ir_optical_depth(M_cell)
+            τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+            transmissivity = get_ir_transmissivity(τ_effective)
 
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1.0 - greenhouse_effective)
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
             heat_cap = get_heat_capacity(lat, lon, elev)
-
-            dT[i, j] = (Q_in - Q_out + heat_transport[i, j]) / heat_cap
 
             # --- Moisture equation ---
             evap = get_evaporation(T_cell, elev)
             precip = get_precipitation(M_cell, T_cell, elev)
+
+            # Latent heat flux (W/m²)
+            # Precipitation releases heat (+), evaporation absorbs heat (-)
+            Q_latent = LATENT_HEAT * (precip - evap)
+
+            dT[i, j] = (Q_in - Q_out + heat_transport[i, j] + Q_latent) / heat_cap
 
             dM[i, j] = evap - precip + moisture_transport[i, j]
         end

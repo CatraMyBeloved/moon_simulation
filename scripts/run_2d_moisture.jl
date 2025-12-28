@@ -33,7 +33,7 @@ println("Initial temperature: $(T0[1,1] - 273.15)°C (uniform)")
 println("Initial moisture: $(M0[1,1]) kg/m² (uniform)")
 
 # Run simulation
-sim_hours = 5000.0  # Shorter for testing moisture dynamics
+sim_hours = 20000.0  # Shorter for testing moisture dynamics
 println("\nRunning coupled T-M simulation for $(round(Int, sim_hours)) hours...")
 progress = make_progress_callback(sim_hours, update_interval_hours=100)
 @time sol = run_simulation_moisture(moon, sim_hours, T0, M0, callback=progress)
@@ -112,22 +112,85 @@ println("="^60)
 
 mkpath("output/plots_2d_moisture")
 
-println("  Creating temperature snapshot...")
-p_temp = plot_temperature_snapshot_moisture(sol, moon)
-savefig(p_temp, "output/plots_2d_moisture/temperature.png")
+# ---- Temperature plots ----
+println("  Temperature plots...")
+println("    - snapshot")
+p = plot_snapshot(sol, moon, Temperature)
+savefig(p, "output/plots_2d_moisture/temperature.png")
 
-println("  Creating moisture snapshot...")
-p_moist = plot_moisture_snapshot(sol, moon)
-savefig(p_moist, "output/plots_2d_moisture/moisture.png")
+println("    - global mean (full)")
+p = plot_global_mean_full(sol, moon, Temperature)
+savefig(p, "output/plots_2d_moisture/temperature_global_mean_full.png")
 
-println("  Creating precipitation map...")
-p_precip = plot_precipitation_snapshot(sol, moon)
-savefig(p_precip, "output/plots_2d_moisture/precipitation.png")
+println("    - global mean (detail)")
+p = plot_global_mean_detail(sol, moon, Temperature, hours=800)
+savefig(p, "output/plots_2d_moisture/temperature_global_mean_detail.png")
 
-println("  Creating terrain map...")
-p_terrain = plot_elevation_map(moon)
-savefig(p_terrain, "output/plots_2d_moisture/terrain.png")
+println("    - Hovmöller longitude")
+p = plot_hovmoeller_longitude(sol, moon, Temperature)
+savefig(p, "output/plots_2d_moisture/temperature_hovmoeller_longitude.png")
+
+println("    - Hovmöller latitude")
+p = plot_hovmoeller_latitude(sol, moon, Temperature)
+savefig(p, "output/plots_2d_moisture/temperature_hovmoeller_latitude.png")
+
+println("    - latitude range")
+p = plot_latitude_mean_range(sol, moon, Temperature)
+savefig(p, "output/plots_2d_moisture/temperature_latitude_range.png")
+
+# ---- Moisture plots ----
+println("  Moisture plots...")
+println("    - snapshot")
+p = plot_snapshot(sol, moon, Moisture)
+savefig(p, "output/plots_2d_moisture/moisture.png")
+
+println("    - global mean (full)")
+p = plot_global_mean_full(sol, moon, Moisture)
+savefig(p, "output/plots_2d_moisture/moisture_global_mean_full.png")
+
+println("    - global mean (detail)")
+p = plot_global_mean_detail(sol, moon, Moisture, hours=800)
+savefig(p, "output/plots_2d_moisture/moisture_global_mean_detail.png")
+
+println("    - Hovmöller longitude")
+p = plot_hovmoeller_longitude(sol, moon, Moisture)
+savefig(p, "output/plots_2d_moisture/moisture_hovmoeller_longitude.png")
+
+println("    - Hovmöller latitude")
+p = plot_hovmoeller_latitude(sol, moon, Moisture)
+savefig(p, "output/plots_2d_moisture/moisture_hovmoeller_latitude.png")
+
+println("    - latitude range")
+p = plot_latitude_mean_range(sol, moon, Moisture)
+savefig(p, "output/plots_2d_moisture/moisture_latitude_range.png")
+
+# ---- Precipitation plots ----
+println("  Precipitation plots...")
+println("    - snapshot")
+p = plot_snapshot(sol, moon, Precipitation)
+savefig(p, "output/plots_2d_moisture/precipitation.png")
+
+println("    - global mean (full)")
+p = plot_global_mean_full(sol, moon, Precipitation)
+savefig(p, "output/plots_2d_moisture/precipitation_global_mean_full.png")
+
+println("    - global mean (detail)")
+p = plot_global_mean_detail(sol, moon, Precipitation, hours=800)
+savefig(p, "output/plots_2d_moisture/precipitation_global_mean_detail.png")
+
+println("    - Hovmöller longitude")
+p = plot_hovmoeller_longitude(sol, moon, Precipitation)
+savefig(p, "output/plots_2d_moisture/precipitation_hovmoeller_longitude.png")
+
+println("    - Hovmöller latitude")
+p = plot_hovmoeller_latitude(sol, moon, Precipitation)
+savefig(p, "output/plots_2d_moisture/precipitation_hovmoeller_latitude.png")
+
+# ---- Terrain ----
+println("  Terrain map...")
+p = plot_elevation_map(moon)
+savefig(p, "output/plots_2d_moisture/terrain.png")
 
 println("\n" * "="^60)
-println("Done! Plots saved to output/plots_2d_moisture/")
+println("Done! 18 plots saved to output/plots_2d_moisture/")
 println("="^60)
