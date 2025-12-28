@@ -76,15 +76,17 @@ Create a callback that prints simulation progress.
 # Returns
 - PeriodicCallback suitable for passing to run_simulation
 """
-function make_progress_callback(total_hours::Real; update_interval_hours::Real=500)
+function make_progress_callback(total_hours::Real; update_interval_hours::Real=100)
     total_sec = total_hours * 3600
     interval_sec = update_interval_hours * 3600
+
+    # Print initial message
+    println("  [Progress updates every $(round(Int, update_interval_hours)) hours]")
 
     callback = PeriodicCallback(interval_sec) do integrator
         pct = 100 * integrator.t / total_sec
         hr = round(Int, integrator.t / 3600)
-        print("\r  Progress: $(lpad(round(Int, pct), 3))% ($(hr) / $(round(Int, total_hours)) hours)    ")
-        flush(stdout)
+        println("  Progress: $(lpad(round(Int, pct), 3))% ($(hr) / $(round(Int, total_hours)) hours)")
     end
 
     return callback

@@ -31,7 +31,7 @@ println("Initial temperature: $(T0[1] - 273.15)°C")
 # Run simulation for 20000 hours
 sim_hours = 20000.0
 println("\nRunning simulation for $(round(Int, sim_hours)) hours...")
-progress = make_progress_callback(sim_hours, update_interval_hours=1000)
+progress = make_progress_callback(sim_hours, update_interval_hours=500)
 @time sol = run_simulation(moon, sim_hours, T0, callback=progress)
 println()  # newline after progress
 

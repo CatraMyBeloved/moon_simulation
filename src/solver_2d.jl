@@ -62,15 +62,18 @@ function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
             T_cell = T[i, j]
             lat = moon.latitudes[i]
             lon = moon.longitudes[j]
+            elev = moon.elevation[i, j]
 
             # Solar heating: depends on time, position, and albedo (temperature-dependent)
             Q_in = get_solar_2d(t, lat, lon, T_cell)
 
+            # Greenhouse effect reduced at altitude (thinner atmosphere)
             greenhouse = get_greenhouse(T_cell)
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1 - greenhouse)
+            greenhouse_effective = greenhouse * (1 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1 - greenhouse_effective)
 
             # Use elevation to determine land vs ocean heat capacity
-            elev = moon.elevation[i, j]
             heat_cap = get_heat_capacity(lat, lon, elev)
 
             dT_2d[i, j] = (Q_in - Q_out + transport[i, j]) / heat_cap
@@ -209,8 +212,12 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
 
             # --- Temperature equation ---
             Q_in = get_solar_2d(t, lat, lon, T_cell)
+
+            # Greenhouse effect reduced at altitude (thinner atmosphere)
             greenhouse = get_greenhouse(T_cell)
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1.0 - greenhouse)
+            greenhouse_effective = greenhouse * (1 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * (1.0 - greenhouse_effective)
             heat_cap = get_heat_capacity(lat, lon, elev)
 
             dT[i, j] = (Q_in - Q_out + heat_transport[i, j]) / heat_cap

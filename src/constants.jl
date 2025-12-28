@@ -64,6 +64,11 @@ const WATER_VAPOR_REF_TEMP = 273.15     # K
 const WATER_VAPOR_SCALE = 30.0         # K
 const WATER_VAPOR_STRENGTH = 0.08
 
+# Elevation-based cooling (thinner atmosphere at altitude)
+# Greenhouse effect is reduced by this fraction at max elevation (elev=1.0)
+# This gives roughly 3-4°C/km cooling (real lapse rate is ~6.5°C/km)
+const ELEVATION_GREENHOUSE_REDUCTION = 0.5
+
 # ============================================================================
 # MOISTURE SYSTEM
 # ============================================================================
@@ -85,5 +90,8 @@ const EVAP_THRESHOLD = 280.0            # Minimum temperature for evaporation (K
 const PRECIP_RATE = 0.01                # Precipitation rate when supersaturated (1/s)
 
 # Moisture transport
-const MOISTURE_DIFFUSION = 8.0          # Base moisture diffusion (kg/m²/s per gradient)
+# Note: Unlike heat transport which is divided by heat capacity (~1e6), moisture
+# transport directly affects dM/dt. So this value must be much smaller to get
+# similar timescales (hours, not milliseconds).
+const MOISTURE_DIFFUSION = 1e-5         # Base moisture diffusion coefficient (1/s)
 const MOISTURE_BARRIER_STRENGTH = 6.0   # Mountains block moisture more than heat
