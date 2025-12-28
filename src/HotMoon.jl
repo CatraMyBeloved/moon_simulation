@@ -44,7 +44,7 @@ export plot_latitude_mean_range, plot_latitude_timeseries, plot_summary
 
 # Export visualization - 2D
 export plot_global_mean_full, plot_global_mean_detail, plot_snapshot
-export plot_hovmoeller, plot_elevation_map
+export plot_hovmoeller_longitude, plot_hovmoeller_latitude, plot_elevation_map
 
 # Export constants that users might want to reference
 export ROTATION_PERIOD, ORBITAL_PERIOD, ECLIPSE_DURATION

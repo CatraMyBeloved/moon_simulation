@@ -377,13 +377,19 @@ function plot_snapshot(sol, moon::MoonBody2D; time_idx=-1)
 end
 
 """
-    plot_hovmoeller(sol, moon::MoonBody2D; lat_idx=1, hours=400)
+    plot_hovmoeller_longitude(sol, moon::MoonBody2D; lat_idx=nothing, hours=280)
 
-Time-Longitude (Hovmöller) diagram at a specific latitude.
+Time-Longitude (Hovmöller) diagram at a specific latitude (default: equator).
 X-axis: time, Y-axis: longitude, color: temperature.
 Shows the day/night terminator moving across longitudes over time.
+Default 280 hours = 10 rotation periods (10 days).
 """
-function plot_hovmoeller(sol, moon::MoonBody2D; lat_idx=1, hours=400)
+function plot_hovmoeller_longitude(sol, moon::MoonBody2D; lat_idx=nothing, hours=280)
+    # Default to equator
+    if lat_idx === nothing
+        lat_idx = argmin(abs.(moon.latitudes))
+    end
+
     t_end = sol.t[end]
     t_start = max(0.0, t_end - hours * 3600)
     start_idx = findfirst(t -> t >= t_start, sol.t)
@@ -405,7 +411,52 @@ function plot_hovmoeller(sol, moon::MoonBody2D; lat_idx=1, hours=400)
     p = heatmap(times_hr, moon.longitudes, temps_matrix,
         xlabel="Time (hours)",
         ylabel="Longitude (°)",
-        title="Hovmöller Diagram at Latitude $(lat_deg)°",
+        title="Time-Longitude at Latitude $(lat_deg)°",
+        color=:thermal,
+        colorbar_title="°C",
+        size=(1000, 500))
+
+    add_eclipse_shading!(times_hr[1], times_hr[end])
+
+    return p
+end
+
+"""
+    plot_hovmoeller_latitude(sol, moon::MoonBody2D; lon_idx=nothing, hours=280)
+
+Time-Latitude (Hovmöller) diagram at a specific longitude (default: subsolar point, lon=0°).
+X-axis: time, Y-axis: latitude, color: temperature.
+Shows temperature evolution across latitudes over time.
+Default 280 hours = 10 rotation periods (10 days).
+"""
+function plot_hovmoeller_latitude(sol, moon::MoonBody2D; lon_idx=nothing, hours=280)
+    # Default to subsolar longitude (0°)
+    if lon_idx === nothing
+        lon_idx = argmin(abs.(moon.longitudes))
+    end
+
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    n_times = length(sol.t) - start_idx + 1
+    n_lat = moon.n_lat
+
+    # Build matrix: rows = latitude, cols = time
+    temps_matrix = zeros(n_lat, n_times)
+    for (col, i) in enumerate(start_idx:length(sol.t))
+        T_2d = reshape(sol.u[i], moon.n_lat, moon.n_lon)
+        temps_matrix[:, col] = T_2d[:, lon_idx] .- 273.15
+    end
+
+    times_hr = sol.t[start_idx:end] ./ 3600
+    lon_deg = round(moon.longitudes[lon_idx], digits=1)
+
+    p = heatmap(times_hr, moon.latitudes, temps_matrix,
+        xlabel="Time (hours)",
+        ylabel="Latitude (°)",
+        title="Time-Latitude at Longitude $(lon_deg)°",
         color=:thermal,
         colorbar_title="°C",
         size=(1000, 500))

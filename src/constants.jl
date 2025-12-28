@@ -31,8 +31,8 @@ const HEAT_CAPACITY_MIDLAT = 4.0e6
 const HEAT_CAPACITY_POLAR = 1.0e7
 
 # Elevation-based heat capacity
-const HEAT_CAPACITY_OCEAN = 4.0e7      # Deep water - massive thermal inertia
-const HEAT_CAPACITY_WETLAND = 2.0e7    # Coastal/wetland - moist soil
+const HEAT_CAPACITY_OCEAN = 2.0e7      # Deep water - massive thermal inertia
+const HEAT_CAPACITY_WETLAND = 1.0e7    # Coastal/wetland - moist soil
 const HEAT_CAPACITY_MOUNTAIN = 3.0e5   # Bare rock - responds quickly
 
 # Elevation thresholds for terrain types (noise units, roughly -1 to 1 after sea level)
@@ -51,7 +51,7 @@ const ZONE_MIDLAT_END = 70.0
 
 # Atmospheric parameters
 const BASE_ALBEDO = 0.28
-const BASE_GREENHOUSE = 0.45
+const BASE_GREENHOUSE = 0.40
 const OPTICAL_DEPTH = 0.25
 
 # Ice-albedo feedback

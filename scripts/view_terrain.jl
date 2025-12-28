@@ -11,7 +11,7 @@ include(joinpath(@__DIR__, "../src/HotMoon.jl"))
 using .HotMoon
 
 println("Generating terrain...")
-moon = HotMoonBody(90, 180, seed=32, sea_level=0.05, scale=0.014, octaves=5)
+moon = HotMoonBody(90, 180, seed=32, sea_level=0.05, scale=0.01, octaves=5)
 
 println("Creating elevation map...")
 p = plot_elevation_map(moon)

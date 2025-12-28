@@ -52,11 +52,11 @@ sol = run_simulation(moon, hours, T0)  # Works for both 1D and 2D
 
 1. **types.jl** - `AbstractMoonBody` with `MoonBody1D` and `MoonBody2D` implementations
 2. **constants.jl** - Physical parameters including zone-based heat capacities and non-linear transport
-3. **physics.jl** - Temperature-dependent albedo, greenhouse effect, and transport coefficients
+3. **physics.jl** - Temperature-dependent albedo, greenhouse effect, transport coefficients, and terrain generation
 4. **geometry.jl** - Solar zenith angles (1D and 2D), eclipse detection
 5. **solver_1d.jl** - 1D ODE system: `dT/dt = (Q_in - Q_out + transport) / C`
 6. **solver_2d.jl** - 2D ODE system with 4-direction transport and longitude wrapping
-7. **visualization.jl** - Plots for 1D simulations (global mean, latitude profiles, heatmaps)
+7. **visualization.jl** - Plots for both 1D and 2D simulations (global mean, profiles, heatmaps, Hovmoeller diagrams)
 
 ### Key Physical Model Details
 
@@ -65,6 +65,7 @@ sol = run_simulation(moon, hours, T0)  # Works for both 1D and 2D
 - **Ice-albedo feedback**: Higher albedo below freezing (tanh transition around 273K)
 - **Water vapor feedback**: Stronger greenhouse effect at higher temperatures
 - **Zone-based thermal inertia**: Equatorial zones have 10x higher heat capacity than polar
+- **Terrain effects**: Fractal noise elevation affects heat capacity and transport (mountains block, oceans enhance)
 
 ### Timing Parameters
 
@@ -74,7 +75,5 @@ sol = run_simulation(moon, hours, T0)  # Works for both 1D and 2D
 
 ## Planned but Not Implemented
 
-- 2D visualization functions
-- Mountain/topography generation (elevation and transport_coeffs fields exist but are flat)
-- Longitude-dependent heat capacity (oceans/continents)
+- Longitude-dependent heat capacity for oceans/continents
 - Pluto notebooks for interactive exploration

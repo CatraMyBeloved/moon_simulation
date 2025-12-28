@@ -17,7 +17,7 @@ println("="^60)
 
 # Create moon with 36 lat × 72 lon grid (2.5° × 5° resolution)
 println("\nCreating moon...")
-moon = HotMoonBody(90, 180, seed=32, sea_level=0.05, scale=0.014, octaves=5)
+moon = HotMoonBody(90, 180, seed=32, sea_level=0.0, scale=0.01, octaves=5)
 println(moon)
 println("  Total cells: $(moon.n_lat * moon.n_lon)")
 
@@ -109,9 +109,15 @@ println("  Creating temperature snapshot...")
 p3 = plot_snapshot(sol, moon)
 savefig(p3, "output/plots_2d/snapshot.png")
 
-println("  Creating Hovmöller diagram...")
-p4 = plot_hovmoeller(sol, moon, hours=400)
-savefig(p4, "output/plots_2d/hovmoeller.png")
+println("  Creating terrain map...")
+p_terrain = plot_elevation_map(moon)
+savefig(p_terrain, "output/plots_2d/terrain.png")
+
+println("  Creating Hovmöller diagrams...")
+p4a = plot_hovmoeller_longitude(sol, moon)
+savefig(p4a, "output/plots_2d/hovmoeller_longitude.png")
+p4b = plot_hovmoeller_latitude(sol, moon)
+savefig(p4b, "output/plots_2d/hovmoeller_latitude.png")
 
 println("  Creating latitude profile...")
 p5 = plot_latitude_mean_range(sol, moon)
