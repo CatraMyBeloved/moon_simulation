@@ -251,3 +251,160 @@ function calculate_transport_coefficients!(transport_coeffs::Array{Float64,3},
         end
     end
 end
+
+# =============================================================================
+# Moisture System
+# =============================================================================
+
+"""
+    get_saturation_moisture(T)
+
+Compute saturation moisture capacity at temperature T.
+Based on Clausius-Clapeyron: saturation increases exponentially with temperature.
+
+At T=273K: returns MOISTURE_REF_SATURATION (5.0 kg/m²)
+Warmer air holds more moisture, colder air holds less.
+
+# Arguments
+- `T`: Temperature in Kelvin
+
+# Returns
+- Saturation moisture (kg/m²)
+"""
+function get_saturation_moisture(T::Real)
+    exponent = CLAUSIUS_CLAPEYRON_SCALE * (T - MOISTURE_REF_TEMP) / MOISTURE_REF_TEMP
+    return MOISTURE_REF_SATURATION * exp(clamp(exponent, -10.0, 10.0))
+end
+
+"""
+    get_evaporation(T, elevation)
+
+Compute evaporation rate from surface.
+Only ocean cells (elevation < 0) evaporate, and only when warm enough.
+
+# Arguments
+- `T`: Surface temperature in Kelvin
+- `elevation`: Normalized elevation (negative = ocean)
+
+# Returns
+- Evaporation rate (kg/m²/s)
+"""
+function get_evaporation(T::Real, elevation::Real)
+    # Only ocean evaporates
+    if elevation >= 0.0
+        return 0.0
+    end
+
+    # Only above threshold temperature
+    if T <= EVAP_THRESHOLD
+        return 0.0
+    end
+
+    # Linear increase with temperature above threshold
+    return EVAP_RATE * (T - EVAP_THRESHOLD)
+end
+
+"""
+    get_precipitation(M, T, elevation)
+
+Compute precipitation rate based on saturation.
+Uses lapse rate to compute effective temperature at altitude (orographic cooling).
+When moisture exceeds saturation capacity at altitude, precipitation occurs.
+
+# Arguments
+- `M`: Current moisture content (kg/m²)
+- `T`: Surface temperature in Kelvin
+- `elevation`: Normalized elevation
+
+# Returns
+- Precipitation rate (kg/m²/s)
+"""
+function get_precipitation(M::Real, T::Real, elevation::Real)
+    # No precipitation if no moisture
+    if M <= 0.0
+        return 0.0
+    end
+
+    # Compute temperature at altitude (orographic cooling)
+    # Only land elevations contribute to lapse rate cooling
+    elev_meters = max(0.0, elevation) * ELEVATION_SCALE
+    T_altitude = T - LAPSE_RATE * elev_meters
+
+    # Saturation at altitude temperature
+    M_sat = get_saturation_moisture(T_altitude)
+
+    # Precipitate excess moisture
+    if M > M_sat
+        return PRECIP_RATE * (M - M_sat)
+    end
+
+    return 0.0
+end
+
+"""
+    moisture_directional_transport(elev_self, elev_neighbor)
+
+Compute moisture transport modifier between two cells.
+Mountains block moisture more strongly than they block heat.
+
+# Arguments
+- `elev_self`: Elevation of current cell
+- `elev_neighbor`: Elevation of neighbor cell
+
+# Returns
+- Transport modifier (0 to ~1)
+"""
+function moisture_directional_transport(elev_self::Float64, elev_neighbor::Float64)
+    delta_elev = elev_neighbor - elev_self
+
+    # Barrier effect: steep slopes strongly block moisture
+    barrier = 1.0 / (1.0 + MOISTURE_BARRIER_STRENGTH * delta_elev^2)
+
+    # Slight downslope preference (moist air flows downhill)
+    asymmetry = 1.0 - 0.3 * tanh(delta_elev * 3.0)
+
+    return barrier * asymmetry
+end
+
+"""
+    calculate_moisture_transport_coefficients!(coeffs, elevation, n_lat, n_lon)
+
+Pre-compute directional moisture transport modifiers.
+Mountains block moisture more strongly than heat.
+Directions: 1=North, 2=South, 3=East, 4=West
+"""
+function calculate_moisture_transport_coefficients!(coeffs::Array{Float64,3},
+                                                     elevation::Matrix{Float64},
+                                                     n_lat::Int, n_lon::Int)
+    for i in 1:n_lat
+        for j in 1:n_lon
+            elev_self = elevation[i, j]
+
+            # North (direction 1)
+            if i > 1
+                elev_neighbor = elevation[i-1, j]
+                coeffs[i, j, 1] = moisture_directional_transport(elev_self, elev_neighbor)
+            else
+                coeffs[i, j, 1] = 0.0
+            end
+
+            # South (direction 2)
+            if i < n_lat
+                elev_neighbor = elevation[i+1, j]
+                coeffs[i, j, 2] = moisture_directional_transport(elev_self, elev_neighbor)
+            else
+                coeffs[i, j, 2] = 0.0
+            end
+
+            # East (direction 3) - wraps
+            j_east = mod1(j + 1, n_lon)
+            elev_neighbor = elevation[i, j_east]
+            coeffs[i, j, 3] = moisture_directional_transport(elev_self, elev_neighbor)
+
+            # West (direction 4) - wraps
+            j_west = mod1(j - 1, n_lon)
+            elev_neighbor = elevation[i, j_west]
+            coeffs[i, j, 4] = moisture_directional_transport(elev_self, elev_neighbor)
+        end
+    end
+end

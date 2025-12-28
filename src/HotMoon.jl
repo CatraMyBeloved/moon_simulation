@@ -29,10 +29,15 @@ export HotMoonBody  # Convenience constructor
 
 # Export unified simulation function (dispatches on moon type)
 export run_simulation
+export run_simulation_moisture  # Coupled temperature-moisture simulation
 
 # Export physics functions
 export get_albedo, get_greenhouse, get_heat_capacity, get_transport_coefficient
 export generate_elevation, create_elevation_sampler
+
+# Export moisture physics functions
+export get_saturation_moisture, get_evaporation, get_precipitation
+export moisture_directional_transport, calculate_moisture_transport_coefficients!
 
 # Export geometry functions
 export get_zenith, get_solar, is_eclipsed
@@ -46,8 +51,16 @@ export plot_latitude_mean_range, plot_latitude_timeseries, plot_summary
 export plot_global_mean_full, plot_global_mean_detail, plot_snapshot
 export plot_hovmoeller_longitude, plot_hovmoeller_latitude, plot_elevation_map
 
+# Export visualization - Moisture
+export plot_moisture_snapshot, plot_precipitation_snapshot, plot_temperature_snapshot_moisture
+
 # Export constants that users might want to reference
 export ROTATION_PERIOD, ORBITAL_PERIOD, ECLIPSE_DURATION
 export STEFAN_BOLTZMANN, SOLAR_CONSTANT
+
+# Export moisture constants
+export MOISTURE_REF_TEMP, MOISTURE_REF_SATURATION, CLAUSIUS_CLAPEYRON_SCALE
+export EVAP_RATE, EVAP_THRESHOLD, PRECIP_RATE
+export MOISTURE_DIFFUSION, MOISTURE_BARRIER_STRENGTH, ELEVATION_SCALE, LAPSE_RATE
 
 end # module

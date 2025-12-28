@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hot Moon Climate Simulator - a 1D/2D climate simulation for a tidally-locked moon using energy balance ODEs. The simulation models temperature patterns, day/night cycles, eclipses, and topographic effects without fluid dynamics.
+Hot Moon Climate Simulator - a 1D/2D climate simulation for a moon orbiting a gas giant in a red giant star system. Uses energy balance ODEs to model temperature patterns, day/night cycles, eclipses, and topographic effects without fluid dynamics.
+
+**Setting**: The moon is *not* tidally locked - it rotates independently (28-hour day) while orbiting its gas giant (64-hour orbit). This creates eclipse events that drift through local time, hitting different hours each orbit. The incommensurable periods (GCD=4, LCM=448) produce a 16-day/7-orbit cycle before patterns repeat.
+
+**Purpose**: Foundation for worldbuilding - the simulation informs climate zones, habitable regions, and natural calendar systems for a fantasy world with its own cultures, timekeeping, and inhabitants.
 
 ## Commands
 

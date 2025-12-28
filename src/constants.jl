@@ -63,3 +63,27 @@ const FREEZING_POINT = 273.15          # K
 const WATER_VAPOR_REF_TEMP = 273.15     # K
 const WATER_VAPOR_SCALE = 30.0         # K
 const WATER_VAPOR_STRENGTH = 0.08
+
+# ============================================================================
+# MOISTURE SYSTEM
+# ============================================================================
+
+# Clausius-Clapeyron saturation
+const MOISTURE_REF_TEMP = 273.15        # Reference temperature (K)
+const MOISTURE_REF_SATURATION = 5.0     # Reference saturation (kg/m²) at 273K
+const CLAUSIUS_CLAPEYRON_SCALE = 17.0   # Exponential scale factor
+
+# Lapse rate for orographic lifting
+const LAPSE_RATE = 6.5e-3               # Temperature drop per meter (K/m)
+const ELEVATION_SCALE = 5000.0          # Max elevation in meters (for normalizing)
+
+# Evaporation
+const EVAP_RATE = 0.001                 # Base evaporation rate (kg/m²/s per K above threshold)
+const EVAP_THRESHOLD = 280.0            # Minimum temperature for evaporation (K)
+
+# Precipitation
+const PRECIP_RATE = 0.01                # Precipitation rate when supersaturated (1/s)
+
+# Moisture transport
+const MOISTURE_DIFFUSION = 8.0          # Base moisture diffusion (kg/m²/s per gradient)
+const MOISTURE_BARRIER_STRENGTH = 6.0   # Mountains block moisture more than heat

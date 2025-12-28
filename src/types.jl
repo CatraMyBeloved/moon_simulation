@@ -76,6 +76,8 @@ Full spatial representation with topography support.
 - `elevation::Matrix{Float64}`: Surface elevation in meters [lat, lon]
 - `transport_coeffs::Array{Float64,3}`: Heat transport modifiers [lat, lon, direction] (1=N, 2=S, 3=E, 4=W)
 - `_transport_cache::Vector{Float64}`: Pre-allocated buffer for ODE solver
+- `moisture_transport_coeffs::Array{Float64,3}`: Moisture transport modifiers [lat, lon, direction]
+- `_moisture_cache::Vector{Float64}`: Pre-allocated buffer for moisture transport
 """
 struct MoonBody2D <: AbstractMoonBody
     n_lat::Int
@@ -86,6 +88,8 @@ struct MoonBody2D <: AbstractMoonBody
     elevation::Matrix{Float64}
     transport_coeffs::Array{Float64,3}
     _transport_cache::Vector{Float64}
+    moisture_transport_coeffs::Array{Float64,3}
+    _moisture_cache::Vector{Float64}
 end
 
 """
@@ -125,11 +129,17 @@ function MoonBody2D(n_lat::Int=18, n_lon::Int=36; seed::Int=42, sea_level::Float
     transport_coeffs = zeros(Float64, n_lat, n_lon, 4)
     calculate_transport_coefficients!(transport_coeffs, elevation, n_lat, n_lon)
 
-    # Pre-allocated cache for ODE solver
+    # Calculate moisture transport coefficients (stronger barrier effect)
+    moisture_transport_coeffs = zeros(Float64, n_lat, n_lon, 4)
+    calculate_moisture_transport_coefficients!(moisture_transport_coeffs, elevation, n_lat, n_lon)
+
+    # Pre-allocated caches for ODE solver
     transport_cache = zeros(Float64, n_lat * n_lon)
+    moisture_cache = zeros(Float64, n_lat * n_lon)
 
     return MoonBody2D(n_lat, n_lon, latitudes, longitudes, cell_areas,
-                      elevation, transport_coeffs, transport_cache)
+                      elevation, transport_coeffs, transport_cache,
+                      moisture_transport_coeffs, moisture_cache)
 end
 
 function Base.show(io::IO, moon::MoonBody2D)

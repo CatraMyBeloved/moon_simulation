@@ -351,25 +351,29 @@ end
 
 Single heatmap snapshot of temperature across the globe.
 Uses percentile-based color limits to preserve detail in equatorial regions
-despite very cold poles.
+despite very cold poles. Uses 30th percentile cutoff and enhanced contrast
+colormap to make differences at higher temperatures more visible.
 """
 function plot_snapshot(sol, moon::MoonBody2D; time_idx=-1)
     idx = time_idx < 0 ? length(sol.t) : time_idx
     T_2d = reshape(sol.u[idx], moon.n_lat, moon.n_lon) .- 273.15
 
-    # Use 10th percentile as lower limit to not let poles dominate
+    # Use 30th percentile as lower limit to compress cold polar regions
+    # and give more color range to warmer equatorial areas
     sorted_temps = sort(vec(T_2d))
-    p10 = sorted_temps[max(1, div(length(sorted_temps), 10))]
-    p100 = sorted_temps[end]
+    n = length(sorted_temps)
+    p30 = sorted_temps[max(1, div(3 * n, 10))]  # 30th percentile
+    p98 = sorted_temps[max(1, div(98 * n, 100))]  # 98th percentile (avoid outliers)
 
     time_hr = round(sol.t[idx] / 3600, digits=1)
 
+    # Use inferno colormap - better perceptual uniformity at high end
     p = heatmap(moon.longitudes, moon.latitudes, T_2d,
         xlabel="Longitude (°)",
         ylabel="Latitude (°)",
         title="Temperature Snapshot (t = $(time_hr) hr)",
-        color=:thermal,
-        clims=(p10, p100),
+        color=:inferno,
+        clims=(p30, p98),
         colorbar_title="°C",
         size=(1000, 500))
 
@@ -533,6 +537,129 @@ function plot_elevation_map(moon::MoonBody2D)
     # Add coastline (elevation = 0)
     contour!(moon.longitudes, moon.latitudes, moon.elevation,
         levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+# =============================================================================
+# Moisture Visualization (for coupled T+M simulations)
+# =============================================================================
+
+"""
+    plot_moisture_snapshot(sol, moon::MoonBody2D; time_idx=-1)
+
+Plot moisture distribution at a specific time from a coupled simulation.
+Expects solution from `run_simulation_moisture` with state layout [T..., M...].
+
+# Arguments
+- `sol`: Solution from run_simulation_moisture
+- `moon`: MoonBody2D structure
+- `time_idx`: Time index (-1 for final state)
+"""
+function plot_moisture_snapshot(sol, moon::MoonBody2D; time_idx::Int=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+    n_cells = moon.n_lat * moon.n_lon
+
+    # Extract moisture (second half of state vector)
+    M_2d = reshape(sol.u[idx][n_cells+1:end], moon.n_lat, moon.n_lon)
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    p = heatmap(moon.longitudes, moon.latitudes, M_2d,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Moisture (t = $(time_hr) hr)",
+        color=:Blues,
+        colorbar_title="kg/m²",
+        size=(1000, 500))
+
+    # Add coastline
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+"""
+    plot_precipitation_snapshot(sol, moon::MoonBody2D; time_idx=-1)
+
+Plot instantaneous precipitation rate at a specific time.
+Computes precipitation from temperature and moisture state.
+
+# Arguments
+- `sol`: Solution from run_simulation_moisture
+- `moon`: MoonBody2D structure
+- `time_idx`: Time index (-1 for final state)
+"""
+function plot_precipitation_snapshot(sol, moon::MoonBody2D; time_idx::Int=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+    n_cells = moon.n_lat * moon.n_lon
+
+    T_2d = reshape(sol.u[idx][1:n_cells], moon.n_lat, moon.n_lon)
+    M_2d = reshape(sol.u[idx][n_cells+1:end], moon.n_lat, moon.n_lon)
+
+    # Compute precipitation at each cell
+    precip = zeros(moon.n_lat, moon.n_lon)
+    for i in 1:moon.n_lat
+        for j in 1:moon.n_lon
+            precip[i, j] = get_precipitation(M_2d[i, j], T_2d[i, j], moon.elevation[i, j])
+        end
+    end
+
+    # Convert to mm/hour (kg/m² per second → mm per hour)
+    precip_mm_hr = precip .* 3600
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    p = heatmap(moon.longitudes, moon.latitudes, precip_mm_hr,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Precipitation Rate (t = $(time_hr) hr)",
+        color=:YlGnBu,
+        colorbar_title="mm/hr",
+        size=(1000, 500))
+
+    # Add coastline
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+"""
+    plot_temperature_snapshot_moisture(sol, moon::MoonBody2D; time_idx=-1)
+
+Plot temperature distribution from a coupled T+M simulation.
+Use this instead of plot_snapshot when working with moisture simulations.
+
+# Arguments
+- `sol`: Solution from run_simulation_moisture
+- `moon`: MoonBody2D structure
+- `time_idx`: Time index (-1 for final state)
+"""
+function plot_temperature_snapshot_moisture(sol, moon::MoonBody2D; time_idx::Int=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+    n_cells = moon.n_lat * moon.n_lon
+
+    # Extract temperature (first half of state vector)
+    T_2d = reshape(sol.u[idx][1:n_cells], moon.n_lat, moon.n_lon) .- 273.15
+
+    # Percentile-based color limits
+    sorted_temps = sort(vec(T_2d))
+    n = length(sorted_temps)
+    p30 = sorted_temps[max(1, div(3 * n, 10))]
+    p98 = sorted_temps[max(1, div(98 * n, 100))]
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    p = heatmap(moon.longitudes, moon.latitudes, T_2d,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Temperature Snapshot (t = $(time_hr) hr)",
+        color=:inferno,
+        clims=(p30, p98),
+        colorbar_title="°C",
+        size=(1000, 500))
 
     return p
 end
