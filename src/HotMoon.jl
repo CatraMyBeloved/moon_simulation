@@ -13,6 +13,7 @@ using Colors
 using DifferentialEquations
 using DifferentialEquations: PeriodicCallback
 using Plots
+using Printf
 using Statistics
 
 # Include source files in dependency order
@@ -35,8 +36,15 @@ export make_progress_callback   # Progress reporting for long simulations
 
 # Export physics functions
 export get_albedo, get_ir_optical_depth, get_ir_transmissivity
-export get_heat_capacity, get_transport_coefficient
+export get_heat_capacity, get_heat_capacity_biome, get_transport_coefficient
 export generate_elevation, create_elevation_sampler
+
+# Export biome system
+export classify_biome, estimate_equilibrium_temperature, estimate_initial_state
+export BIOME_OCEAN, BIOME_ICE_SHEET, BIOME_TUNDRA, BIOME_BOREAL_FOREST
+export BIOME_COLD_STEPPE, BIOME_TEMPERATE_FOREST, BIOME_GRASSLAND
+export BIOME_TROPICAL_FOREST, BIOME_SAVANNA, BIOME_HOT_DESERT
+export BIOME_MOUNTAIN, BIOME_WETLAND, NUM_BIOMES, BIOME_NAMES, BIOME_HEAT_CAPACITY
 
 # Export moisture physics functions
 export get_saturation_moisture, get_evaporation, get_precipitation
@@ -51,9 +59,13 @@ export plot_global_mean, plot_latitude_profile, plot_heatmap
 export plot_latitude_mean_range, plot_latitude_timeseries, plot_summary
 
 # Export visualization - 2D (with variable dispatch)
-export PlotVariable, Temperature, Moisture, Precipitation
+export PlotVariable, Temperature, Moisture, Precipitation, Biome
 export plot_global_mean_full, plot_global_mean_detail, plot_snapshot
 export plot_hovmoeller_longitude, plot_hovmoeller_latitude, plot_elevation_map
+export print_biome_statistics, plot_biome_with_legend
+
+# Export animation functions
+export animate_variable, animate_combined, animate_all
 
 # Export constants that users might want to reference
 export ROTATION_PERIOD, ORBITAL_PERIOD, ECLIPSE_DURATION

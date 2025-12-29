@@ -26,14 +26,14 @@ ocean_cells = sum(moon.elevation .< 0)
 ocean_pct = 100 * ocean_cells / (moon.n_lat * moon.n_lon)
 println("  Ocean coverage: $(round(ocean_pct, digits=1))%")
 
-# Initial conditions
-T0 = fill(285.0, moon.n_lat, moon.n_lon)  # 12°C uniform
-M0 = fill(2.0, moon.n_lat, moon.n_lon)    # 2 kg/m² moisture everywhere
-println("Initial temperature: $(T0[1,1] - 273.15)°C (uniform)")
-println("Initial moisture: $(M0[1,1]) kg/m² (uniform)")
+# Initial conditions - use equilibrium estimate based on latitude/elevation
+println("\nEstimating initial state from equilibrium conditions...")
+T0, M0 = estimate_initial_state(moon)
+println("Initial temperature range: $(round(minimum(T0) - 273.15, digits=1))°C to $(round(maximum(T0) - 273.15, digits=1))°C")
+println("Initial moisture range: $(round(minimum(M0), digits=2)) to $(round(maximum(M0), digits=2)) kg/m²")
 
 # Run simulation
-sim_hours = 20000.0  # Shorter for testing moisture dynamics
+sim_hours = 30000.0  # Shorter for testing moisture dynamics
 println("\nRunning coupled T-M simulation for $(round(Int, sim_hours)) hours...")
 progress = make_progress_callback(sim_hours, update_interval_hours=100)
 @time sol = run_simulation_moisture(moon, sim_hours, T0, M0, callback=progress)
@@ -191,6 +191,24 @@ println("  Terrain map...")
 p = plot_elevation_map(moon)
 savefig(p, "output/plots_2d_moisture/terrain.png")
 
+# ---- Biome visualization ----
+println("  Biome map...")
+p = plot_snapshot(sol, moon, Biome)
+savefig(p, "output/plots_2d_moisture/biome.png")
+
+p = plot_biome_with_legend(sol, moon)
+savefig(p, "output/plots_2d_moisture/biome_with_legend.png")
+
+# Print biome statistics
+print_biome_statistics(T_final, M_final, moon)
+
+# ---- Animations ----
 println("\n" * "="^60)
-println("Done! 18 plots saved to output/plots_2d_moisture/")
+println("GENERATING ANIMATIONS")
+println("="^60)
+println("  Creating 4 animated GIFs (1 metacycle = 448 hours)...")
+animate_all(sol, moon, "output/plots_2d_moisture", hours=448, frame_skip=4, fps=10)
+
+println("\n" * "="^60)
+println("Done! 20 plots + 4 animations saved to output/plots_2d_moisture/")
 println("="^60)

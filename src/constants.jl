@@ -102,3 +102,74 @@ const MOISTURE_BARRIER_STRENGTH = 6.0   # Mountains block moisture more than hea
 
 # Latent heat of vaporization (J/kg)
 const LATENT_HEAT = 2.5e6
+
+# ============================================================================
+# BIOME SYSTEM
+# ============================================================================
+
+# Biome IDs (0-11)
+const BIOME_OCEAN = 0
+const BIOME_ICE_SHEET = 1
+const BIOME_TUNDRA = 2
+const BIOME_BOREAL_FOREST = 3
+const BIOME_COLD_STEPPE = 4
+const BIOME_TEMPERATE_FOREST = 5
+const BIOME_GRASSLAND = 6
+const BIOME_TROPICAL_FOREST = 7
+const BIOME_SAVANNA = 8
+const BIOME_HOT_DESERT = 9
+const BIOME_MOUNTAIN = 10
+const BIOME_WETLAND = 11
+
+const NUM_BIOMES = 12
+
+# Biome heat capacities (J⋅m⁻²⋅K⁻¹)
+# Index is biome_id + 1 (Julia is 1-indexed)
+const BIOME_HEAT_CAPACITY = [
+    2.0e7,   # 0: Ocean - water's high specific heat
+    1.5e7,   # 1: Ice Sheet - thick ice mass
+    1.0e7,   # 2: Tundra - permafrost
+    8.0e6,   # 3: Boreal Forest - conifers + wet soil
+    3.0e6,   # 4: Cold Steppe - sparse grass, dry soil
+    6.0e6,   # 5: Temperate Forest - deciduous + moist soil
+    4.0e6,   # 6: Grassland - grass + soil
+    8.0e6,   # 7: Tropical Forest - dense canopy, very wet
+    3.0e6,   # 8: Savanna - sparse trees, dry soil
+    5.0e5,   # 9: Hot Desert - sand/bare rock
+    3.0e5,   # 10: Mountain - bare rock
+    1.2e7,   # 11: Wetland - coastal marsh, saturated soil
+]
+
+# Biome names for visualization
+const BIOME_NAMES = [
+    "Ocean", "Ice Sheet", "Tundra", "Boreal Forest", "Cold Steppe",
+    "Temperate Forest", "Grassland", "Tropical Forest", "Savanna",
+    "Hot Desert", "Mountain", "Wetland"
+]
+
+# Temperature thresholds (Kelvin)
+const BIOME_T_ICE = 263.15       # -10°C - below this is ice sheet
+const BIOME_T_TUNDRA = 273.15    # 0°C - below this is tundra
+const BIOME_T_COLD = 283.15      # 10°C - below this is cold biomes
+const BIOME_T_TEMPERATE = 293.15 # 20°C - below this is temperate biomes
+
+# Moisture thresholds (kg/m²) for biome classification
+const BIOME_M_DESERT = 2.0       # Below this: desert
+const BIOME_M_DRY = 3.0          # Below this: steppe/dry
+const BIOME_M_MODERATE = 4.0     # Below this: grassland
+const BIOME_M_WET = 5.0          # Above this: forest
+
+# Elevation thresholds for terrain-based biomes
+const BIOME_ELEV_MOUNTAIN = 0.5  # Above this: mountain
+const BIOME_ELEV_WETLAND = 0.1   # Below this (but above 0): wetland
+
+# Transition widths for smooth blending (tanh)
+const BIOME_T_WIDTH = 5.0        # K - temperature transition width
+const BIOME_M_WIDTH = 1.0        # kg/m² - moisture transition width
+const BIOME_ELEV_WIDTH = 0.05    # elevation transition width
+
+# Initial state estimation parameters
+const INIT_T_EQUATOR = 310.0     # K (~37°C) - equilibrium temp at equator
+const INIT_T_POLE = 250.0        # K (~-23°C) - equilibrium temp at poles
+const INIT_MOISTURE_DIFFUSE_ITERS = 15  # iterations for moisture diffusion
+const INIT_MOISTURE_DECAY = 0.7  # decay factor per diffusion step

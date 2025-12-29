@@ -957,3 +957,573 @@ function plot_elevation_map(moon::MoonBody2D)
 
     return p
 end
+
+# =============================================================================
+# Animation Functions
+# =============================================================================
+
+"""
+    _get_subsolar_point(t::Real) -> (lon, lat)
+
+Calculate the subsolar point (where sun is directly overhead) at time t.
+Returns (longitude, latitude) in degrees.
+"""
+function _get_subsolar_point(t::Real)
+    # Subsolar longitude moves west as moon rotates
+    subsolar_lon = mod(-360.0 * (t / ROTATION_PERIOD), 360.0)
+    # Shift to -180 to 180 range
+    if subsolar_lon > 180
+        subsolar_lon -= 360
+    end
+    subsolar_lat = 0.0  # No axial tilt in this model
+    return (subsolar_lon, subsolar_lat)
+end
+
+"""
+    _compute_animation_clims(sol, moon::MoonBody2D, ::Type{V}, frame_indices) where V <: PlotVariable
+
+Pre-compute fixed color limits across all animation frames for consistent visualization.
+Returns (vmin, vmax) tuple.
+"""
+function _compute_animation_clims(sol, moon::MoonBody2D, ::Type{Temperature}, frame_indices)
+    all_vals = Float64[]
+    for idx in frame_indices
+        T_2d = _extract_temperature(sol, moon, idx) .- 273.15
+        append!(all_vals, vec(T_2d))
+    end
+    sorted = sort(all_vals)
+    n = length(sorted)
+    # Use 2nd to 98th percentile for temperature
+    return (sorted[max(1, div(2*n, 100))], sorted[max(1, div(98*n, 100))])
+end
+
+function _compute_animation_clims(sol, moon::MoonBody2D, ::Type{Moisture}, frame_indices)
+    max_val = 0.0
+    for idx in frame_indices
+        M_2d = _extract_moisture(sol, moon, idx)
+        max_val = max(max_val, maximum(M_2d))
+    end
+    return (0.0, max_val * 1.05)
+end
+
+function _compute_animation_clims(sol, moon::MoonBody2D, ::Type{Precipitation}, frame_indices)
+    all_vals = Float64[]
+    for idx in frame_indices
+        T_2d = _extract_temperature(sol, moon, idx)
+        M_2d = _extract_moisture(sol, moon, idx)
+        precip = _compute_precipitation(T_2d, M_2d, moon) .* 3600
+        append!(all_vals, vec(precip))
+    end
+    sorted = sort(all_vals)
+    n = length(sorted)
+    # Use 95th percentile for precipitation (can have spikes)
+    return (0.0, sorted[max(1, div(95*n, 100))])
+end
+
+"""
+    animate_variable(sol, moon::MoonBody2D, ::Type{V}, filename::String; kwargs...) where V <: PlotVariable
+
+Create an animated GIF of a single variable over time.
+
+# Arguments
+- `sol`: Solution from coupled simulation
+- `moon`: MoonBody2D structure
+- `V`: Variable type (Temperature, Moisture, or Precipitation)
+- `filename`: Output GIF path
+
+# Keyword Arguments
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Time steps between frames (default: 4 = 2 hours)
+- `fps`: Frames per second in output (default: 10)
+- `show_subsolar`: Show subsolar point marker (default: true)
+"""
+function animate_variable(sol, moon::MoonBody2D, ::Type{Temperature}, filename::String;
+                          hours::Real=448, frame_skip::Int=4, fps::Int=10,
+                          show_subsolar::Bool=true)
+    # Calculate frame indices
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    frame_indices = collect(start_idx:frame_skip:length(sol.t))
+    n_frames = length(frame_indices)
+
+    println("  Creating $(n_frames) frames for Temperature...")
+
+    # Pre-compute color limits
+    clims = _compute_animation_clims(sol, moon, Temperature, frame_indices)
+
+    # Create animation
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        t = sol.t[idx]
+        time_hr = round(t / 3600, digits=1)
+        eclipsed = is_eclipsed(t)
+
+        T_2d = _extract_temperature(sol, moon, idx) .- 273.15
+
+        eclipse_str = eclipsed ? " [ECLIPSE]" : ""
+        title = "Temperature (t=$(time_hr)hr)$(eclipse_str)"
+
+        p = heatmap(moon.longitudes, moon.latitudes, T_2d,
+            xlabel="Longitude (°)",
+            ylabel="Latitude (°)",
+            title=title,
+            color=:inferno,
+            clims=clims,
+            colorbar_title="°C",
+            size=(800, 400),
+            titlefontsize=10)
+
+        # Add coastline
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:white, linewidth=0.5, label="")
+
+        # Add subsolar marker (yellow dot) unless eclipsed
+        if show_subsolar && !eclipsed
+            subsolar_lon, subsolar_lat = _get_subsolar_point(t)
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=8, markerstrokecolor=:orange,
+                markerstrokewidth=2, label="")
+        end
+
+        # Progress
+        if frame_num % 20 == 0
+            print("    Frame $frame_num/$n_frames\r")
+        end
+    end
+
+    println("    Encoding GIF...")
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+
+    return filename
+end
+
+function animate_variable(sol, moon::MoonBody2D, ::Type{Moisture}, filename::String;
+                          hours::Real=448, frame_skip::Int=4, fps::Int=10,
+                          show_subsolar::Bool=true)
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    frame_indices = collect(start_idx:frame_skip:length(sol.t))
+    n_frames = length(frame_indices)
+
+    println("  Creating $(n_frames) frames for Moisture...")
+
+    clims = _compute_animation_clims(sol, moon, Moisture, frame_indices)
+
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        t = sol.t[idx]
+        time_hr = round(t / 3600, digits=1)
+        eclipsed = is_eclipsed(t)
+
+        M_2d = _extract_moisture(sol, moon, idx)
+
+        eclipse_str = eclipsed ? " [ECLIPSE]" : ""
+        title = "Moisture (t=$(time_hr)hr)$(eclipse_str)"
+
+        p = heatmap(moon.longitudes, moon.latitudes, M_2d,
+            xlabel="Longitude (°)",
+            ylabel="Latitude (°)",
+            title=title,
+            color=:Blues,
+            clims=clims,
+            colorbar_title="kg/m²",
+            size=(800, 400),
+            titlefontsize=10)
+
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+
+        if show_subsolar && !eclipsed
+            subsolar_lon, subsolar_lat = _get_subsolar_point(t)
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=6, markerstrokecolor=:orange,
+                markerstrokewidth=2, label="")
+        end
+
+        if frame_num % 20 == 0
+            print("    Frame $frame_num/$n_frames\r")
+        end
+    end
+
+    println("    Encoding GIF...")
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+
+    return filename
+end
+
+function animate_variable(sol, moon::MoonBody2D, ::Type{Precipitation}, filename::String;
+                          hours::Real=448, frame_skip::Int=4, fps::Int=10,
+                          show_subsolar::Bool=true)
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    frame_indices = collect(start_idx:frame_skip:length(sol.t))
+    n_frames = length(frame_indices)
+
+    println("  Creating $(n_frames) frames for Precipitation...")
+
+    clims = _compute_animation_clims(sol, moon, Precipitation, frame_indices)
+
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        t = sol.t[idx]
+        time_hr = round(t / 3600, digits=1)
+        eclipsed = is_eclipsed(t)
+
+        T_2d = _extract_temperature(sol, moon, idx)
+        M_2d = _extract_moisture(sol, moon, idx)
+        precip = _compute_precipitation(T_2d, M_2d, moon) .* 3600
+
+        eclipse_str = eclipsed ? " [ECLIPSE]" : ""
+        title = "Precipitation (t=$(time_hr)hr)$(eclipse_str)"
+
+        p = heatmap(moon.longitudes, moon.latitudes, precip,
+            xlabel="Longitude (°)",
+            ylabel="Latitude (°)",
+            title=title,
+            color=:YlGnBu,
+            clims=clims,
+            colorbar_title="mm/hr",
+            size=(800, 400),
+            titlefontsize=10)
+
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+
+        if show_subsolar && !eclipsed
+            subsolar_lon, subsolar_lat = _get_subsolar_point(t)
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=6, markerstrokecolor=:orange,
+                markerstrokewidth=2, label="")
+        end
+
+        if frame_num % 20 == 0
+            print("    Frame $frame_num/$n_frames\r")
+        end
+    end
+
+    println("    Encoding GIF...")
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+
+    return filename
+end
+
+"""
+    animate_combined(sol, moon::MoonBody2D, filename::String; kwargs...)
+
+Create an animated GIF with Temperature, Moisture, and Precipitation side by side.
+
+# Keyword Arguments
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Time steps between frames (default: 4 = 2 hours)
+- `fps`: Frames per second (default: 10)
+- `show_subsolar`: Show subsolar point marker (default: true)
+"""
+function animate_combined(sol, moon::MoonBody2D, filename::String;
+                          hours::Real=448, frame_skip::Int=4, fps::Int=10,
+                          show_subsolar::Bool=true)
+    # Calculate frame indices
+    t_end = sol.t[end]
+    t_start = max(0.0, t_end - hours * 3600)
+    start_idx = findfirst(t -> t >= t_start, sol.t)
+    start_idx = isnothing(start_idx) ? 1 : start_idx
+
+    frame_indices = collect(start_idx:frame_skip:length(sol.t))
+    n_frames = length(frame_indices)
+
+    println("  Creating $(n_frames) combined frames...")
+
+    # Pre-compute color limits for all variables
+    clims_T = _compute_animation_clims(sol, moon, Temperature, frame_indices)
+    clims_M = _compute_animation_clims(sol, moon, Moisture, frame_indices)
+    clims_P = _compute_animation_clims(sol, moon, Precipitation, frame_indices)
+
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        t = sol.t[idx]
+        time_hr = round(t / 3600, digits=1)
+        eclipsed = is_eclipsed(t)
+        eclipse_str = eclipsed ? " [ECLIPSE]" : ""
+
+        # Extract data
+        T_2d = _extract_temperature(sol, moon, idx) .- 273.15
+        M_2d = _extract_moisture(sol, moon, idx)
+        T_K = T_2d .+ 273.15  # Need Kelvin for precipitation calculation
+        precip = _compute_precipitation(T_K, M_2d, moon) .* 3600
+
+        # Get subsolar point
+        subsolar_lon, subsolar_lat = _get_subsolar_point(t)
+
+        # Temperature panel
+        p1 = heatmap(moon.longitudes, moon.latitudes, T_2d,
+            title="Temperature (°C)",
+            color=:inferno,
+            clims=clims_T,
+            colorbar_title="°C",
+            titlefontsize=9,
+            xlabel="", ylabel="Lat (°)")
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:white, linewidth=0.5, label="")
+        if show_subsolar && !eclipsed
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=6, markerstrokecolor=:orange,
+                markerstrokewidth=1, label="")
+        end
+
+        # Moisture panel
+        p2 = heatmap(moon.longitudes, moon.latitudes, M_2d,
+            title="Moisture (kg/m²)",
+            color=:Blues,
+            clims=clims_M,
+            colorbar_title="kg/m²",
+            titlefontsize=9,
+            xlabel="Lon (°)", ylabel="")
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+        if show_subsolar && !eclipsed
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=6, markerstrokecolor=:orange,
+                markerstrokewidth=1, label="")
+        end
+
+        # Precipitation panel
+        p3 = heatmap(moon.longitudes, moon.latitudes, precip,
+            title="Precipitation (mm/hr)",
+            color=:YlGnBu,
+            clims=clims_P,
+            colorbar_title="mm/hr",
+            titlefontsize=9,
+            xlabel="", ylabel="")
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+        if show_subsolar && !eclipsed
+            scatter!([subsolar_lon], [subsolar_lat],
+                color=:yellow, markersize=6, markerstrokecolor=:orange,
+                markerstrokewidth=1, label="")
+        end
+
+        # Combine with overall title
+        plot(p1, p2, p3,
+            layout=(1, 3),
+            size=(2100, 450),
+            plot_title="t = $(time_hr) hr$(eclipse_str)",
+            plot_titlefontsize=11)
+
+        # Progress
+        if frame_num % 20 == 0
+            print("    Frame $frame_num/$n_frames\r")
+        end
+    end
+
+    println("    Encoding GIF...")
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+
+    return filename
+end
+
+"""
+    animate_all(sol, moon::MoonBody2D, output_dir::String; kwargs...)
+
+Create all animation outputs: combined GIF plus individual variable GIFs.
+
+# Keyword Arguments
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Time steps between frames (default: 4 = 2 hours)
+- `fps`: Frames per second (default: 10)
+"""
+function animate_all(sol, moon::MoonBody2D, output_dir::String;
+                     hours::Real=448, frame_skip::Int=4, fps::Int=10)
+
+    mkpath(output_dir)
+
+    println("Creating animations ($(hours) hours, skip=$(frame_skip))...")
+
+    # Combined animation
+    animate_combined(sol, moon, joinpath(output_dir, "climate_animation.gif");
+                     hours=hours, frame_skip=frame_skip, fps=fps)
+
+    # Individual animations
+    animate_variable(sol, moon, Temperature,
+                     joinpath(output_dir, "temperature_animation.gif");
+                     hours=hours, frame_skip=frame_skip, fps=fps)
+
+    animate_variable(sol, moon, Moisture,
+                     joinpath(output_dir, "moisture_animation.gif");
+                     hours=hours, frame_skip=frame_skip, fps=fps)
+
+    animate_variable(sol, moon, Precipitation,
+                     joinpath(output_dir, "precipitation_animation.gif");
+                     hours=hours, frame_skip=frame_skip, fps=fps)
+
+    println("All animations saved to $output_dir")
+end
+
+# =============================================================================
+# Biome Visualization
+# =============================================================================
+
+"Biome classification variable (computed from T, M, elevation)"
+struct Biome <: PlotVariable end
+
+# Biome colors - 12 distinct colors for categorical visualization
+# Using RGB from ColorSchemes or defining directly
+const BIOME_COLORS_RGB = [
+    (0.12, 0.47, 0.71),   # 0: Ocean - blue
+    (1.0, 1.0, 1.0),      # 1: Ice Sheet - white
+    (0.65, 0.81, 0.89),   # 2: Tundra - light blue
+    (0.2, 0.63, 0.17),    # 3: Boreal Forest - dark green
+    (0.76, 0.65, 0.52),   # 4: Cold Steppe - tan
+    (0.13, 0.55, 0.13),   # 5: Temperate Forest - forest green
+    (0.80, 0.86, 0.22),   # 6: Grassland - yellow-green
+    (0.0, 0.39, 0.0),     # 7: Tropical Forest - dark green
+    (1.0, 0.55, 0.0),     # 8: Savanna - orange
+    (0.96, 0.87, 0.70),   # 9: Hot Desert - sand
+    (0.59, 0.59, 0.59),   # 10: Mountain - gray
+    (0.25, 0.60, 0.60),   # 11: Wetland - teal
+]
+
+"""
+    _compute_biome_map(T_2d, M_2d, moon::MoonBody2D) -> Matrix{Int}
+
+Compute biome classification for each cell from temperature, moisture, and elevation.
+Returns matrix of biome IDs (0-11).
+"""
+function _compute_biome_map(T_2d, M_2d, moon::MoonBody2D)
+    biome_map = zeros(Int, moon.n_lat, moon.n_lon)
+    for i in 1:moon.n_lat
+        for j in 1:moon.n_lon
+            biome_map[i, j] = classify_biome(T_2d[i, j], M_2d[i, j], moon.elevation[i, j])
+        end
+    end
+    return biome_map
+end
+
+"""
+    plot_snapshot(sol, moon::MoonBody2D, ::Type{Biome}; time_idx=-1)
+
+Create a biome classification map at a specific time.
+Uses categorical colors with a legend showing biome names.
+"""
+function plot_snapshot(sol, moon::MoonBody2D, ::Type{Biome}; time_idx=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+
+    T_2d = _extract_temperature(sol, moon, idx)
+    M_2d = _extract_moisture(sol, moon, idx)
+    biome_map = _compute_biome_map(T_2d, M_2d, moon)
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    # Create custom colormap from biome colors
+    # Convert to a format suitable for heatmap
+    biome_cmap = cgrad([RGB(c...) for c in BIOME_COLORS_RGB], NUM_BIOMES, categorical=true)
+
+    # Plot with discrete color levels
+    p = heatmap(moon.longitudes, moon.latitudes, biome_map,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Biome Classification (t = $(time_hr) hr)",
+        color=biome_cmap,
+        clims=(-0.5, NUM_BIOMES - 0.5),
+        colorbar=false,  # We'll add a legend instead
+        size=(1200, 500))
+
+    # Add coastline
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    return p
+end
+
+"""
+    print_biome_statistics(T_2d, M_2d, moon::MoonBody2D)
+
+Print statistics about biome coverage.
+Shows percentage of surface area covered by each biome type.
+"""
+function print_biome_statistics(T_2d, M_2d, moon::MoonBody2D)
+    biome_map = _compute_biome_map(T_2d, M_2d, moon)
+
+    # Calculate area-weighted coverage for each biome
+    biome_areas = zeros(NUM_BIOMES)
+    total_area = sum(moon.cell_areas)
+
+    for i in 1:moon.n_lat
+        for j in 1:moon.n_lon
+            biome_id = biome_map[i, j]
+            biome_areas[biome_id + 1] += moon.cell_areas[i, j]
+        end
+    end
+
+    println("\nBiome Coverage (area-weighted):")
+    println("=" ^ 40)
+
+    for (id, name) in enumerate(BIOME_NAMES)
+        pct = 100 * biome_areas[id] / total_area
+        if pct > 0.1  # Only show biomes with >0.1% coverage
+            bar_len = round(Int, pct / 2)  # Scale for display
+            bar = "█" ^ bar_len
+            println(@sprintf("  %18s: %5.1f%% %s", name, pct, bar))
+        end
+    end
+    println("=" ^ 40)
+end
+
+"""
+    plot_biome_with_legend(sol, moon::MoonBody2D; time_idx=-1)
+
+Create a biome map with a separate legend panel showing all biome types.
+Returns a combined plot with map and legend.
+"""
+function plot_biome_with_legend(sol, moon::MoonBody2D; time_idx=-1)
+    idx = time_idx < 0 ? length(sol.t) : time_idx
+
+    T_2d = _extract_temperature(sol, moon, idx)
+    M_2d = _extract_moisture(sol, moon, idx)
+    biome_map = _compute_biome_map(T_2d, M_2d, moon)
+
+    time_hr = round(sol.t[idx] / 3600, digits=1)
+
+    # Create custom colormap
+    biome_cmap = cgrad([RGB(c...) for c in BIOME_COLORS_RGB], NUM_BIOMES, categorical=true)
+
+    # Main biome map
+    p1 = heatmap(moon.longitudes, moon.latitudes, biome_map,
+        xlabel="Longitude (°)",
+        ylabel="Latitude (°)",
+        title="Biome Classification (t = $(time_hr) hr)",
+        color=biome_cmap,
+        clims=(-0.5, NUM_BIOMES - 0.5),
+        colorbar=false,
+        size=(900, 450))
+
+    contour!(moon.longitudes, moon.latitudes, moon.elevation,
+        levels=[0.0], color=:black, linewidth=1, label="")
+
+    # Create legend as scatter plot with colored markers
+    p2 = plot(legend=false, grid=false, axis=false, ticks=false,
+        xlims=(0, 1), ylims=(0, NUM_BIOMES + 1),
+        size=(250, 450))
+
+    for (id, name) in enumerate(BIOME_NAMES)
+        y_pos = NUM_BIOMES - id + 1
+        color = RGB(BIOME_COLORS_RGB[id]...)
+
+        # Color box
+        scatter!([0.1], [y_pos], marker=:square, markersize=12,
+            color=color, markerstrokecolor=:black, markerstrokewidth=1)
+
+        # Label
+        annotate!(0.2, y_pos, text(name, :left, 8))
+    end
+
+    # Combine plots
+    return plot(p1, p2, layout=@layout([a{0.8w} b]), size=(1150, 450))
+end

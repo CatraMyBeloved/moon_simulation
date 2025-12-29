@@ -74,8 +74,10 @@ function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
 
             Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
 
-            # Use elevation to determine land vs ocean heat capacity
-            heat_cap = get_heat_capacity(lat, lon, elev)
+            # Use biome-based heat capacity (depends on T, M, elevation)
+            # For non-moisture solver, use a default moisture estimate
+            M_estimate = 3.0  # Assume moderate moisture
+            heat_cap = get_heat_capacity_biome(T_cell, M_estimate, elev)
 
             dT_2d[i, j] = (Q_in - Q_out + transport[i, j]) / heat_cap
         end
@@ -220,7 +222,9 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
             transmissivity = get_ir_transmissivity(τ_effective)
 
             Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
-            heat_cap = get_heat_capacity(lat, lon, elev)
+
+            # Use biome-based heat capacity (depends on current T, M, elevation)
+            heat_cap = get_heat_capacity_biome(T_cell, M_cell, elev)
 
             # --- Moisture equation ---
             evap = get_evaporation(T_cell, elev)
