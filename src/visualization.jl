@@ -967,14 +967,12 @@ end
 
 Calculate the subsolar point (where sun is directly overhead) at time t.
 Returns (longitude, latitude) in degrees.
+Longitude is in 0° to 360° range to match moon.longitudes.
 """
 function _get_subsolar_point(t::Real)
     # Subsolar longitude moves west as moon rotates
-    subsolar_lon = mod(-360.0 * (t / ROTATION_PERIOD), 360.0)
-    # Shift to -180 to 180 range
-    if subsolar_lon > 180
-        subsolar_lon -= 360
-    end
+    # Keep in 0-360° range to match moon.longitudes coordinate system
+    subsolar_lon = mod(360.0 - mod(360.0 * (t / ROTATION_PERIOD), 360.0), 360.0)
     subsolar_lat = 0.0  # No axial tilt in this model
     return (subsolar_lon, subsolar_lat)
 end
