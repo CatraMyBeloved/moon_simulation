@@ -173,3 +173,13 @@ const INIT_T_EQUATOR = 310.0     # K (~37°C) - equilibrium temp at equator
 const INIT_T_POLE = 250.0        # K (~-23°C) - equilibrium temp at poles
 const INIT_MOISTURE_DIFFUSE_ITERS = 15  # iterations for moisture diffusion
 const INIT_MOISTURE_DECAY = 0.7  # decay factor per diffusion step
+
+# ============================================================================
+# PERFORMANCE TUNING
+# ============================================================================
+
+# Minimum grid cells before enabling threading (overhead not worth it for small grids)
+const THREADING_MIN_CELLS = 100
+
+# Enable threading by default when Julia has multiple threads available
+const USE_THREADING = Ref(Threads.nthreads() > 1)

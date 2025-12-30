@@ -14,7 +14,7 @@ Calculate solar zenith angle at given time and latitude.
 # Returns
 - Zenith angle in radians, or `nothing` if sun is below horizon
 """
-function get_zenith(t::Real, lat_deg::Real)
+@inline function get_zenith(t::Real, lat_deg::Real)
     phase = (t / ROTATION_PERIOD) % 1.0 #Where in the day are we?
     lat = deg2rad(lat_deg) #Convert latitude to radians for calculations
     hour_angle = 2π * phase # Hour angle in radians, aka at this time of day, how high is the sun?
@@ -23,7 +23,6 @@ function get_zenith(t::Real, lat_deg::Real)
         return nothing
     end
     return acos(cos_z) # convert to actual angle
-
 end
 
 """
@@ -39,7 +38,7 @@ Eclipse occurs at orbital_phase = 0.5 (halfway through orbit).
 # Returns
 - `true` if eclipsed, `false` otherwise
 """
-function is_eclipsed(t::Real)
+@inline function is_eclipsed(t::Real)
     orbital_phase = (t % ORBITAL_PERIOD) / ORBITAL_PERIOD
     eclipse_half_width = (ECLIPSE_DURATION / ORBITAL_PERIOD) / 2
 
@@ -51,7 +50,7 @@ end
 
 Calculate solar heating at given time, latitude, and temperature (1D version).
 """
-function get_solar(t::Real, lat_deg::Real, T::Real)
+@inline function get_solar(t::Real, lat_deg::Real, T::Real)
     if is_eclipsed(t)
         return 0.0
     end
@@ -84,7 +83,7 @@ At t=0, lon=0° is at noon; lon=180° is at midnight.
 # Returns
 - Zenith angle in radians, or `nothing` if sun is below horizon
 """
-function get_zenith_2d(t::Real, lat_deg::Real, lon_deg::Real)
+@inline function get_zenith_2d(t::Real, lat_deg::Real, lon_deg::Real)
     # Hour angle = rotation phase + longitude offset
     # This is the only difference from the 1D version
     hour_angle = 2π * (t / ROTATION_PERIOD) + deg2rad(lon_deg)
@@ -105,7 +104,7 @@ Calculate solar heating for a 2D grid cell.
 
 Same physics as get_solar, but uses longitude-aware zenith calculation.
 """
-function get_solar_2d(t::Real, lat_deg::Real, lon_deg::Real, T::Real)
+@inline function get_solar_2d(t::Real, lat_deg::Real, lon_deg::Real, T::Real)
     if is_eclipsed(t)
         return 0.0
     end

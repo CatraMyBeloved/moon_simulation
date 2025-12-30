@@ -13,8 +13,9 @@ function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
     n = moon.n_lat
     transport = moon._transport_cache
 
+    # Transport loop - has sequential dependencies, cannot parallelize
     fill!(transport, 0.0)
-    for i in 2:n
+    @inbounds for i in 2:n
         # Non-linear transport: use average temperature to determine coefficient
         T_avg = 0.5 * (temps[i-1] + temps[i])
         k = get_transport_coefficient(T_avg)
@@ -23,18 +24,33 @@ function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
         transport[i-1] -= flow
     end
 
-    for i in 1:n
-        Q_in = get_solar(t, moon.latitudes[i], temps[i])
+    # Physics loop - embarrassingly parallel (each band is independent)
+    if should_thread(n)
+        @inbounds Threads.@threads for i in 1:n
+            Q_in = get_solar(t, moon.latitudes[i], temps[i])
 
-        # IR optical depth and transmissivity (dry atmosphere for 1D)
-        τ_IR = get_ir_optical_depth()
-        transmissivity = get_ir_transmissivity(τ_IR)
+            # IR optical depth and transmissivity (dry atmosphere for 1D)
+            τ_IR = get_ir_optical_depth()
+            transmissivity = get_ir_transmissivity(τ_IR)
 
-        Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
 
-        # Use latitude-dependent heat capacity
-        heat_cap = get_heat_capacity(moon.latitudes[i])
-        dT[i] = (Q_in - Q_out + transport[i]) / heat_cap
+            # Use latitude-dependent heat capacity
+            heat_cap = get_heat_capacity(moon.latitudes[i])
+            dT[i] = (Q_in - Q_out + transport[i]) / heat_cap
+        end
+    else
+        @inbounds @simd for i in 1:n
+            Q_in = get_solar(t, moon.latitudes[i], temps[i])
+
+            τ_IR = get_ir_optical_depth()
+            transmissivity = get_ir_transmissivity(τ_IR)
+
+            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
+
+            heat_cap = get_heat_capacity(moon.latitudes[i])
+            dT[i] = (Q_in - Q_out + transport[i]) / heat_cap
+        end
     end
 end
 

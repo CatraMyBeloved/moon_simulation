@@ -18,6 +18,7 @@ using Statistics
 
 # Include source files in dependency order
 include("constants.jl")
+include("performance.jl")
 include("types.jl")
 include("physics.jl")
 include("geometry.jl")
@@ -66,6 +67,9 @@ export print_biome_statistics, plot_biome_with_legend
 
 # Export animation functions
 export animate_variable, animate_combined, animate_all
+
+# Export performance control
+export set_threading, get_threading_status
 
 # Export constants that users might want to reference
 export ROTATION_PERIOD, ORBITAL_PERIOD, ECLIPSE_DURATION

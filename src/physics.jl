@@ -16,7 +16,7 @@ This creates realistic thermal response differences: equatorial regions
 respond quickly to diurnal heating cycles, while polar ice masses
 change temperature slowly due to their large thermal mass.
 """
-function get_heat_capacity(lat_deg::Real)
+@inline function get_heat_capacity(lat_deg::Real)
     abs_lat = abs(lat_deg)
     if abs_lat < ZONE_EQUATORIAL_END
         return HEAT_CAPACITY_EQUATORIAL
@@ -40,7 +40,7 @@ Terrain types by elevation:
 
 Smooth transitions between zones using tanh blending.
 """
-function get_heat_capacity(lat_deg::Real, lon_deg::Real, elevation::Real)
+@inline function get_heat_capacity(lat_deg::Real, lon_deg::Real, elevation::Real)
     # Ocean
     if elevation < 0.0
         # Deeper = more thermal mass, but cap it
@@ -84,7 +84,7 @@ Uses tanh for smooth transition, consistent with other feedbacks.
 # Returns
 - Transport coefficient (W⋅m⁻²⋅K⁻¹)
 """
-function get_transport_coefficient(T_avg::Real)
+@inline @fastmath function get_transport_coefficient(T_avg::Real)
     # Convection activation: 0 when cold, 1 when warm
     activation = 0.5 * (1 + tanh((T_avg - CONVECTION_THRESHOLD) / CONVECTION_WIDTH))
 
@@ -106,7 +106,7 @@ between ice albedo (cold) and base albedo (warm).
 # Returns
 - Albedo (0-1)
 """
-function get_albedo(T::Real)
+@inline @fastmath function get_albedo(T::Real)
     x = (T - FREEZING_POINT) / ICE_TRANSITION_WIDTH
     ice_frac = 0.5 * (1 - tanh(x))
     return BASE_ALBEDO * (1 - ice_frac) + ICE_ALBEDO * ice_frac
@@ -126,7 +126,7 @@ Higher τ = more absorption = stronger greenhouse effect.
 # Returns
 - IR optical depth τ (dimensionless, typically 0.5-3.0)
 """
-function get_ir_optical_depth(M::Real)
+@inline function get_ir_optical_depth(M::Real)
     # Base optical depth from permanent gases (CO₂, CH₄, etc.)
     τ_base = BASE_IR_OPTICAL_DEPTH
 
@@ -146,7 +146,7 @@ Uses base optical depth only.
 # Returns
 - IR optical depth τ (dimensionless)
 """
-function get_ir_optical_depth()
+@inline function get_ir_optical_depth()
     return BASE_IR_OPTICAL_DEPTH
 end
 
@@ -172,7 +172,7 @@ This comes from solving the two-stream radiative transfer equations.
 - τ = 2: transmissivity = 0.50 (50% blocked)
 - τ = 4: transmissivity = 0.33 (67% blocked)
 """
-function get_ir_transmissivity(τ::Real)
+@inline function get_ir_transmissivity(τ::Real)
     return 2.0 / (2.0 + τ)
 end
 
@@ -260,7 +260,7 @@ Also applies ocean transport bonus for underwater cells.
 function calculate_transport_coefficients!(transport_coeffs::Array{Float64,3},
                                            elevation::Matrix{Float64},
                                            n_lat::Int, n_lon::Int)
-    for i in 1:n_lat
+    @inbounds for i in 1:n_lat
         for j in 1:n_lon
             elev_self = elevation[i, j]
 
@@ -315,7 +315,7 @@ Warmer air holds more moisture, colder air holds less.
 # Returns
 - Saturation moisture (kg/m²)
 """
-function get_saturation_moisture(T::Real)
+@inline @fastmath function get_saturation_moisture(T::Real)
     exponent = CLAUSIUS_CLAPEYRON_SCALE * (T - MOISTURE_REF_TEMP) / MOISTURE_REF_TEMP
     return MOISTURE_REF_SATURATION * exp(clamp(exponent, -10.0, 10.0))
 end
@@ -333,7 +333,7 @@ Only ocean cells (elevation < 0) evaporate, and only when warm enough.
 # Returns
 - Evaporation rate (kg/m²/s)
 """
-function get_evaporation(T::Real, elevation::Real)
+@inline function get_evaporation(T::Real, elevation::Real)
     # Only ocean evaporates
     if elevation >= 0.0
         return 0.0
@@ -363,7 +363,7 @@ When moisture exceeds saturation capacity at altitude, precipitation occurs.
 # Returns
 - Precipitation rate (kg/m²/s)
 """
-function get_precipitation(M::Real, T::Real, elevation::Real)
+@inline function get_precipitation(M::Real, T::Real, elevation::Real)
     # No precipitation if no moisture
     if M <= 0.0
         return 0.0
@@ -420,7 +420,7 @@ Directions: 1=North, 2=South, 3=East, 4=West
 function calculate_moisture_transport_coefficients!(coeffs::Array{Float64,3},
                                                      elevation::Matrix{Float64},
                                                      n_lat::Int, n_lon::Int)
-    for i in 1:n_lat
+    @inbounds for i in 1:n_lat
         for j in 1:n_lon
             elev_self = elevation[i, j]
 
@@ -534,7 +534,7 @@ artifacts from sharp discontinuities.
 # Returns
 - Heat capacity (J⋅m⁻²⋅K⁻¹)
 """
-function get_heat_capacity_biome(T::Real, M::Real, elevation::Real)
+@inline @fastmath function get_heat_capacity_biome(T::Real, M::Real, elevation::Real)
     # Ocean - handle separately with depth scaling
     if elevation < 0.0
         depth_factor = clamp(1.0 - elevation, 1.0, 2.0)

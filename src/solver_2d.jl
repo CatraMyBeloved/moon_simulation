@@ -13,16 +13,20 @@ For each cell: dT/dt = (Q_solar - Q_radiated + Q_transport) / heat_capacity
 function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
     n_lat = moon.n_lat
     n_lon = moon.n_lon
+    n_cells = n_lat * n_lon
 
     T = reshape(temps, n_lat, n_lon)
     dT_2d = reshape(dT, n_lat, n_lon)
     transport = reshape(moon._transport_cache, n_lat, n_lon)
 
-
     fill!(transport, 0.0)
 
-    for i in 1:n_lat
-        for j in 1:n_lon
+    # Transport loop - each cell accumulates from neighbors (no write conflicts)
+    if should_thread(n_cells)
+        @inbounds Threads.@threads for idx in 1:n_cells
+            i = ((idx - 1) % n_lat) + 1
+            j = ((idx - 1) ÷ n_lat) + 1
+
             T_self = T[i, j]
 
             # North neighbor
@@ -55,31 +59,85 @@ function derivatives_2d!(dT, temps, moon::MoonBody2D, t)
             k_dir = k * moon.transport_coeffs[i, j, 4]
             transport[i, j] += k_dir * (T_neighbor - T_self)
         end
+    else
+        @inbounds for i in 1:n_lat
+            for j in 1:n_lon
+                T_self = T[i, j]
+
+                if i > 1
+                    T_neighbor = T[i-1, j]
+                    k = get_transport_coefficient(0.5 * (T_self + T_neighbor))
+                    k_dir = k * moon.transport_coeffs[i, j, 1]
+                    transport[i, j] += k_dir * (T_neighbor - T_self)
+                end
+
+                if i < n_lat
+                    T_neighbor = T[i+1, j]
+                    k = get_transport_coefficient(0.5 * (T_self + T_neighbor))
+                    k_dir = k * moon.transport_coeffs[i, j, 2]
+                    transport[i, j] += k_dir * (T_neighbor - T_self)
+                end
+
+                j_east = mod1(j + 1, n_lon)
+                T_neighbor = T[i, j_east]
+                k = get_transport_coefficient(0.5 * (T_self + T_neighbor))
+                k_dir = k * moon.transport_coeffs[i, j, 3]
+                transport[i, j] += k_dir * (T_neighbor - T_self)
+
+                j_west = mod1(j - 1, n_lon)
+                T_neighbor = T[i, j_west]
+                k = get_transport_coefficient(0.5 * (T_self + T_neighbor))
+                k_dir = k * moon.transport_coeffs[i, j, 4]
+                transport[i, j] += k_dir * (T_neighbor - T_self)
+            end
+        end
     end
 
-    for i in 1:n_lat
-        for j in 1:n_lon
+    # Physics loop - embarrassingly parallel (each cell is independent)
+    if should_thread(n_cells)
+        @inbounds Threads.@threads for idx in 1:n_cells
+            i = ((idx - 1) % n_lat) + 1
+            j = ((idx - 1) ÷ n_lat) + 1
+
             T_cell = T[i, j]
             lat = moon.latitudes[i]
             lon = moon.longitudes[j]
             elev = moon.elevation[i, j]
 
-            # Solar heating: depends on time, position, and albedo (temperature-dependent)
             Q_in = get_solar_2d(t, lat, lon, T_cell)
 
-            # IR optical depth reduced at altitude (thinner atmosphere)
             τ_IR = get_ir_optical_depth()
             τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
             transmissivity = get_ir_transmissivity(τ_effective)
 
             Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
 
-            # Use biome-based heat capacity (depends on T, M, elevation)
-            # For non-moisture solver, use a default moisture estimate
-            M_estimate = 3.0  # Assume moderate moisture
+            M_estimate = 3.0
             heat_cap = get_heat_capacity_biome(T_cell, M_estimate, elev)
 
             dT_2d[i, j] = (Q_in - Q_out + transport[i, j]) / heat_cap
+        end
+    else
+        @inbounds for i in 1:n_lat
+            for j in 1:n_lon
+                T_cell = T[i, j]
+                lat = moon.latitudes[i]
+                lon = moon.longitudes[j]
+                elev = moon.elevation[i, j]
+
+                Q_in = get_solar_2d(t, lat, lon, T_cell)
+
+                τ_IR = get_ir_optical_depth()
+                τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+                transmissivity = get_ir_transmissivity(τ_effective)
+
+                Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
+
+                M_estimate = 3.0
+                heat_cap = get_heat_capacity_biome(T_cell, M_estimate, elev)
+
+                dT_2d[i, j] = (Q_in - Q_out + transport[i, j]) / heat_cap
+            end
         end
     end
 end
@@ -147,9 +205,13 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
     fill!(moisture_transport, 0.0)
 
     # ========== TRANSPORT LOOPS ==========
+    # Each cell accumulates from neighbors - no write conflicts, parallelizable
 
-    for i in 1:n_lat
-        for j in 1:n_lon
+    if should_thread(n_cells)
+        @inbounds Threads.@threads for idx in 1:n_cells
+            i = ((idx - 1) % n_lat) + 1
+            j = ((idx - 1) ÷ n_lat) + 1
+
             T_self = T[i, j]
             M_self = M[i, j]
 
@@ -157,12 +219,10 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
             if i > 1
                 T_nb, M_nb = T[i-1, j], M[i-1, j]
 
-                # Heat transport
                 k_heat = get_transport_coefficient(0.5 * (T_self + T_nb))
                 k_heat_dir = k_heat * moon.transport_coeffs[i, j, 1]
                 heat_transport[i, j] += k_heat_dir * (T_nb - T_self)
 
-                # Moisture transport
                 k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 1]
                 moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
             end
@@ -201,42 +261,116 @@ function derivatives_2d_moisture!(du, u, moon::MoonBody2D, t)
             k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 4]
             moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
         end
+    else
+        @inbounds for i in 1:n_lat
+            for j in 1:n_lon
+                T_self = T[i, j]
+                M_self = M[i, j]
+
+                if i > 1
+                    T_nb, M_nb = T[i-1, j], M[i-1, j]
+
+                    k_heat = get_transport_coefficient(0.5 * (T_self + T_nb))
+                    k_heat_dir = k_heat * moon.transport_coeffs[i, j, 1]
+                    heat_transport[i, j] += k_heat_dir * (T_nb - T_self)
+
+                    k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 1]
+                    moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
+                end
+
+                if i < n_lat
+                    T_nb, M_nb = T[i+1, j], M[i+1, j]
+
+                    k_heat = get_transport_coefficient(0.5 * (T_self + T_nb))
+                    k_heat_dir = k_heat * moon.transport_coeffs[i, j, 2]
+                    heat_transport[i, j] += k_heat_dir * (T_nb - T_self)
+
+                    k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 2]
+                    moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
+                end
+
+                j_east = mod1(j + 1, n_lon)
+                T_nb, M_nb = T[i, j_east], M[i, j_east]
+
+                k_heat = get_transport_coefficient(0.5 * (T_self + T_nb))
+                k_heat_dir = k_heat * moon.transport_coeffs[i, j, 3]
+                heat_transport[i, j] += k_heat_dir * (T_nb - T_self)
+
+                k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 3]
+                moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
+
+                j_west = mod1(j - 1, n_lon)
+                T_nb, M_nb = T[i, j_west], M[i, j_west]
+
+                k_heat = get_transport_coefficient(0.5 * (T_self + T_nb))
+                k_heat_dir = k_heat * moon.transport_coeffs[i, j, 4]
+                heat_transport[i, j] += k_heat_dir * (T_nb - T_self)
+
+                k_moist_dir = MOISTURE_DIFFUSION * moon.moisture_transport_coeffs[i, j, 4]
+                moisture_transport[i, j] += k_moist_dir * (M_nb - M_self)
+            end
+        end
     end
 
     # ========== BALANCE EQUATIONS ==========
+    # Embarrassingly parallel - each cell is independent
 
-    for i in 1:n_lat
-        for j in 1:n_lon
+    if should_thread(n_cells)
+        @inbounds Threads.@threads for idx in 1:n_cells
+            i = ((idx - 1) % n_lat) + 1
+            j = ((idx - 1) ÷ n_lat) + 1
+
             T_cell = T[i, j]
-            M_cell = max(0.0, M[i, j])  # Ensure non-negative moisture
+            M_cell = max(0.0, M[i, j])
             lat = moon.latitudes[i]
             lon = moon.longitudes[j]
             elev = moon.elevation[i, j]
 
-            # --- Temperature equation ---
             Q_in = get_solar_2d(t, lat, lon, T_cell)
 
-            # IR optical depth from moisture content, reduced at altitude
             τ_IR = get_ir_optical_depth(M_cell)
             τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
             transmissivity = get_ir_transmissivity(τ_effective)
 
             Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
 
-            # Use biome-based heat capacity (depends on current T, M, elevation)
             heat_cap = get_heat_capacity_biome(T_cell, M_cell, elev)
 
-            # --- Moisture equation ---
             evap = get_evaporation(T_cell, elev)
             precip = get_precipitation(M_cell, T_cell, elev)
 
-            # Latent heat flux (W/m²)
-            # Precipitation releases heat (+), evaporation absorbs heat (-)
             Q_latent = LATENT_HEAT * (precip - evap)
 
             dT[i, j] = (Q_in - Q_out + heat_transport[i, j] + Q_latent) / heat_cap
-
             dM[i, j] = evap - precip + moisture_transport[i, j]
+        end
+    else
+        @inbounds for i in 1:n_lat
+            for j in 1:n_lon
+                T_cell = T[i, j]
+                M_cell = max(0.0, M[i, j])
+                lat = moon.latitudes[i]
+                lon = moon.longitudes[j]
+                elev = moon.elevation[i, j]
+
+                Q_in = get_solar_2d(t, lat, lon, T_cell)
+
+                τ_IR = get_ir_optical_depth(M_cell)
+                τ_effective = τ_IR * (1.0 - ELEVATION_GREENHOUSE_REDUCTION * max(0.0, elev))
+                transmissivity = get_ir_transmissivity(τ_effective)
+
+                Q_out = EMISSIVITY * STEFAN_BOLTZMANN * T_cell^4 * transmissivity
+
+                heat_cap = get_heat_capacity_biome(T_cell, M_cell, elev)
+
+                evap = get_evaporation(T_cell, elev)
+                precip = get_precipitation(M_cell, T_cell, elev)
+
+                Q_latent = LATENT_HEAT * (precip - evap)
+
+                dT[i, j] = (Q_in - Q_out + heat_transport[i, j] + Q_latent) / heat_cap
+                dM[i, j] = evap - precip + moisture_transport[i, j]
+            end
         end
     end
 end
