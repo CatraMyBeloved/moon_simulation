@@ -87,18 +87,18 @@ const ELEVATION_SCALE = 5000.0          # Max elevation in meters (for normalizi
 # Earth average: ~4 mm/day ≈ 5×10⁻⁵ kg/m²/s at typical ocean temps
 # This moon receives ~1.6× Earth's solar flux, so ~3-4× evaporation is plausible
 # At 300K: evap = 1×10⁻⁵ × 20 = 2×10⁻⁴ kg/m²/s ≈ 17 mm/day (4× Earth)
-const EVAP_RATE = 1.0e-5                # Base evaporation rate (kg/m²/s per K above threshold)
-const EVAP_THRESHOLD = 280.0            # Minimum temperature for evaporation (K)
+const EVAP_RATE = 0.5e-5                # Base evaporation rate (kg/m²/s per K above threshold)
+const EVAP_THRESHOLD = 290.0            # Minimum temperature for evaporation (K)
 
 # Precipitation
-const PRECIP_RATE = 0.001
+const PRECIP_RATE = 0.002
 
 # Moisture transport
 # Note: Unlike heat transport which is divided by heat capacity (~1e6), moisture
 # transport directly affects dM/dt. So this value must be much smaller to get
 # similar timescales (hours, not milliseconds).
 const MOISTURE_DIFFUSION = 1e-4       # Base moisture diffusion coefficient (1/s)
-const MOISTURE_BARRIER_STRENGTH = 6.0   # Mountains block moisture more than heat
+const MOISTURE_BARRIER_STRENGTH = 8.0   # Mountains block moisture more than heat
 
 # Latent heat of vaporization (J/kg)
 const LATENT_HEAT = 2.5e6

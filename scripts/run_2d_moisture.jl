@@ -17,7 +17,7 @@ println("="^60)
 
 # Create moon with 90 lat × 180 lon grid (2° × 2° resolution)
 println("\nCreating moon...")
-moon = HotMoonBody(90, 180, seed=32, sea_level=0.0, scale=0.01, octaves=5)
+moon = HotMoonBody(45, 90, seed=32, sea_level=0.0, scale=0.01, octaves=5)
 println(moon)
 println("  Total cells: $(moon.n_lat * moon.n_lon)")
 
