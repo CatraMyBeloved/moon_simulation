@@ -1,0 +1,179 @@
+"""
+Animation functions for 2D climate visualizations.
+"""
+
+# =============================================================================
+# Generic Animation Function
+# =============================================================================
+
+"""
+    animate_field_evolution(sol, moon::MoonBody2D, ::Type{V}, filename; kwargs...) where V<:PlotVariable
+
+Create an animated GIF of a variable over time.
+
+# Arguments
+- `sol`: ODE solution
+- `moon`: MoonBody2D instance
+- `V`: PlotVariable type (Temperature, Moisture, etc.)
+- `filename`: Output filename for GIF
+
+# Keywords
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Skip frames to reduce file size (default: 4)
+- `fps`: Frames per second (default: 10)
+"""
+function animate_field_evolution(sol, moon::MoonBody2D, ::Type{V}, filename::String;
+                                  hours=448, frame_skip=4, fps=10) where V<:PlotVariable
+    start_idx = find_start_index_for_hours_before_end(sol, hours)
+    frame_indices = start_idx:frame_skip:length(sol.t)
+
+    println("    Creating $(variable_name(V)) animation: $(length(frame_indices)) frames...")
+
+    # Compute global min/max for consistent color scale
+    all_vals = Float64[]
+    for idx in frame_indices
+        field = extract_field_for_plotting(sol, moon, V, idx)
+        append!(all_vals, vec(field))
+    end
+
+    clims = if V == Temperature
+        sorted_vals = sort(all_vals)
+        n = length(sorted_vals)
+        (sorted_vals[max(1, div(3 * n, 10))], sorted_vals[max(1, div(98 * n, 100))])
+    else
+        (minimum(all_vals), maximum(all_vals))
+    end
+
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        field = extract_field_for_plotting(sol, moon, V, idx)
+        time_hr = round(sol.t[idx] / 3600, digits=1)
+
+        heatmap(moon.longitudes, moon.latitudes, field,
+            xlabel="Longitude (°)",
+            ylabel="Latitude (°)",
+            title="$(variable_name(V)) (t = $(time_hr) hr)",
+            color=heatmap_colorscheme(V),
+            clims=clims,
+            colorbar_title=colorbar_label(V),
+            size=(900, 450))
+
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=1, label="")
+    end
+
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+end
+
+# Convenience wrappers
+animate_temperature_evolution(sol, moon, filename; kwargs...) =
+    animate_field_evolution(sol, moon, Temperature, filename; kwargs...)
+animate_moisture_evolution(sol, moon, filename; kwargs...) =
+    animate_field_evolution(sol, moon, Moisture, filename; kwargs...)
+animate_precipitation_evolution(sol, moon, filename; kwargs...) =
+    animate_field_evolution(sol, moon, Precipitation, filename; kwargs...)
+animate_upper_mass_evolution(sol, moon, filename; kwargs...) =
+    animate_field_evolution(sol, moon, UpperMass, filename; kwargs...)
+animate_upper_moisture_evolution(sol, moon, filename; kwargs...) =
+    animate_field_evolution(sol, moon, UpperMoisture, filename; kwargs...)
+
+# =============================================================================
+# Combined Animation (T, M, Precip side by side)
+# =============================================================================
+
+"""
+    animate_combined_climate(sol, moon::MoonBody2D, filename; kwargs...)
+
+Create an animated GIF with Temperature, Moisture, and Precipitation side by side.
+
+# Keywords
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Skip frames to reduce file size (default: 4)
+- `fps`: Frames per second (default: 10)
+"""
+function animate_combined_climate(sol, moon::MoonBody2D, filename::String;
+                                   hours=448, frame_skip=4, fps=10)
+    start_idx = find_start_index_for_hours_before_end(sol, hours)
+    frame_indices = start_idx:frame_skip:length(sol.t)
+
+    println("    Creating combined climate animation: $(length(frame_indices)) frames...")
+
+    # Compute global ranges for consistent color scales
+    T_vals, M_vals, P_vals = Float64[], Float64[], Float64[]
+    for idx in frame_indices
+        append!(T_vals, vec(extract_field_for_plotting(sol, moon, Temperature, idx)))
+        append!(M_vals, vec(extract_field_for_plotting(sol, moon, Moisture, idx)))
+        append!(P_vals, vec(extract_field_for_plotting(sol, moon, Precipitation, idx)))
+    end
+
+    T_sorted = sort(T_vals)
+    n_T = length(T_sorted)
+    T_clims = (T_sorted[max(1, div(3 * n_T, 10))], T_sorted[max(1, div(98 * n_T, 100))])
+    M_clims = (minimum(M_vals), maximum(M_vals))
+    P_clims = (minimum(P_vals), maximum(P_vals))
+
+    anim = @animate for (frame_num, idx) in enumerate(frame_indices)
+        T_field = extract_field_for_plotting(sol, moon, Temperature, idx)
+        M_field = extract_field_for_plotting(sol, moon, Moisture, idx)
+        P_field = extract_field_for_plotting(sol, moon, Precipitation, idx)
+        time_hr = round(sol.t[idx] / 3600, digits=1)
+
+        p1 = heatmap(moon.longitudes, moon.latitudes, T_field,
+            title="Temperature (°C) - t=$(time_hr)h",
+            color=:thermal, clims=T_clims, colorbar=true)
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+
+        p2 = heatmap(moon.longitudes, moon.latitudes, M_field,
+            title="Moisture (kg/m²)",
+            color=:Blues, clims=M_clims, colorbar=true)
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+
+        p3 = heatmap(moon.longitudes, moon.latitudes, P_field,
+            title="Precipitation (mm/hr)",
+            color=:YlGnBu, clims=P_clims, colorbar=true)
+        contour!(moon.longitudes, moon.latitudes, moon.elevation,
+            levels=[0.0], color=:black, linewidth=0.5, label="")
+
+        plot(p1, p2, p3, layout=(1, 3), size=(1500, 400))
+    end
+
+    gif(anim, filename, fps=fps)
+    println("    Saved: $filename")
+end
+
+# =============================================================================
+# Batch Animation
+# =============================================================================
+
+"""
+    animate_all_variables(sol, moon::MoonBody2D, output_dir; kwargs...)
+
+Generate all animation types for a moisture-coupled simulation.
+
+# Keywords
+- `hours`: Number of hours to animate (default: 448 = 1 metacycle)
+- `frame_skip`: Skip frames to reduce file size (default: 4)
+- `fps`: Frames per second (default: 10)
+"""
+function animate_all_variables(sol, moon::MoonBody2D, output_dir::String;
+                                hours=448, frame_skip=4, fps=10)
+    mkpath(output_dir)
+
+    println("  Generating climate animation...")
+    animate_combined_climate(sol, moon, joinpath(output_dir, "climate_animation.gif");
+        hours=hours, frame_skip=frame_skip, fps=fps)
+
+    println("  Generating temperature animation...")
+    animate_field_evolution(sol, moon, Temperature,
+        joinpath(output_dir, "temperature.gif"); hours=hours, frame_skip=frame_skip, fps=fps)
+
+    println("  Generating moisture animation...")
+    animate_field_evolution(sol, moon, Moisture,
+        joinpath(output_dir, "moisture.gif"); hours=hours, frame_skip=frame_skip, fps=fps)
+
+    println("  Generating precipitation animation...")
+    animate_field_evolution(sol, moon, Precipitation,
+        joinpath(output_dir, "precipitation.gif"); hours=hours, frame_skip=frame_skip, fps=fps)
+end

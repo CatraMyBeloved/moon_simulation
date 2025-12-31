@@ -4,80 +4,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hot Moon Climate Simulator - a 1D/2D climate simulation for a moon orbiting a gas giant in a red giant star system. Uses energy balance ODEs to model temperature patterns, day/night cycles, eclipses, and topographic effects without fluid dynamics.
+Hot Moon Climate Simulator - a Julia-based scientific simulation for modeling 2D/1D climate dynamics on an exoplanet moon. Uses energy balance ODEs (not full fluid dynamics) to simulate temperature, moisture, and atmospheric circulation patterns.
 
-**Setting**: The moon is *not* tidally locked - it rotates independently (28-hour day) while orbiting its gas giant (64-hour orbit). This creates eclipse events that drift through local time, hitting different hours each orbit. The incommensurable periods (GCD=4, LCM=448) produce a 16-day/7-orbit cycle before patterns repeat.
-
-**Purpose**: Foundation for worldbuilding - the simulation informs climate zones, habitable regions, and natural calendar systems for a fantasy world with its own cultures, timekeeping, and inhabitants.
-
-## Commands
+## Build & Run Commands
 
 ```bash
-# Run 1D simulation (latitude bands only)
-julia --project=. scripts/run_1d.jl
-
-# Run 2D simulation (latitude × longitude grid)
-julia --project=. scripts/run_2d.jl
-
-# Run tests
-julia --project=. tests/test_physics.jl
-
-# Install dependencies (uses Project.toml)
+# Install dependencies
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+# Run simulations
+julia --project=. scripts/run_1d.jl              # 1D latitude-only
+julia --project=. scripts/run_2d.jl              # 2D temperature
+julia --project=. scripts/run_2d_moisture.jl     # 2D with moisture coupling
+julia --project=. scripts/run_2d_twolayer.jl     # 2D with two-layer atmosphere
+
+# With multithreading (recommended for 2D)
+julia --project=. -t 4 scripts/run_2d.jl
 ```
 
 ## Architecture
 
-The codebase uses a Julia module (`HotMoon`) defined in `src/HotMoon.jl`. Scripts load it via:
-```julia
-include(joinpath(@__DIR__, "../src/HotMoon.jl"))
-using .HotMoon
+```
+HotMoon.jl (main module)
+├── types.jl       → AbstractMoonBody, MoonBody1D, MoonBody2D
+├── constants.jl   → Physical parameters (orbital, radiative, transport)
+├── geometry.jl    → Solar geometry, zenith angles, eclipse detection
+├── physics.jl     → Core physics: albedo, greenhouse, moisture, biomes
+├── solver_1d.jl   → 1D ODE system (latitude bands)
+├── solver_2d.jl   → 2D ODE system + moisture/two-layer variants
+├── visualization.jl → Plotting, animation, analysis
+└── performance.jl → Threading utilities
 ```
 
-### Multiple Dispatch Pattern
+**Design Pattern:** Multiple dispatch on moon type enables unified `run_simulation(moon, hours, T0)` that auto-selects correct solver.
 
-The codebase uses Julia's multiple dispatch for 1D/2D support:
+## Key Types
 
-```julia
-# Type hierarchy
-abstract type AbstractMoonBody end
-struct MoonBody1D <: AbstractMoonBody  # latitude bands only
-struct MoonBody2D <: AbstractMoonBody  # latitude × longitude grid
+- `MoonBody1D(n_lat)` - Quick simulations with latitude bands only
+- `MoonBody2D(n_lat, n_lon; seed, sea_level)` - Full 2D grid with terrain
+- Unified constructor: `HotMoonBody(18)` → 1D, `HotMoonBody(90, 180)` → 2D
 
-# Unified constructor
-moon1d = HotMoonBody(18)        # Returns MoonBody1D with 18 latitude bands
-moon2d = HotMoonBody(18, 36)    # Returns MoonBody2D with 18×36 grid
+## Simulation Variants
 
-# Unified simulation function (dispatches on type)
-sol = run_simulation(moon, hours, T0)  # Works for both 1D and 2D
-```
+1. **Temperature-only**: State = T[i,j]
+2. **Temperature + Moisture**: State = [T; M] (evaporation-precipitation)
+3. **Two-Layer Atmosphere**: State = [T; M; U; M_up] (vertical circulation)
 
-### Core Physics Pipeline
+## Important Patterns
 
-1. **types.jl** - `AbstractMoonBody` with `MoonBody1D` and `MoonBody2D` implementations
-2. **constants.jl** - Physical parameters including zone-based heat capacities and non-linear transport
-3. **physics.jl** - Temperature-dependent albedo, greenhouse effect, transport coefficients, and terrain generation
-4. **geometry.jl** - Solar zenith angles (1D and 2D), eclipse detection
-5. **solver_1d.jl** - 1D ODE system: `dT/dt = (Q_in - Q_out + transport) / C`
-6. **solver_2d.jl** - 2D ODE system with 4-direction transport and longitude wrapping
-7. **visualization.jl** - Plots for both 1D and 2D simulations (global mean, profiles, heatmaps, Hovmoeller diagrams)
+**Smooth transitions (tanh)**: All feedbacks use tanh for numerical stability - ice-albedo, convection activation, biome blending.
 
-### Key Physical Model Details
+**State vector flattening**: ODEs work with flat vectors. 2D indexing: `idx = (i-1) * n_lon + j`. Moisture/two-layer concatenate systems: `[T; M; U; M_up]`.
 
-- **Energy balance**: Solar heating vs Stefan-Boltzmann emission modulated by greenhouse factor
-- **Heat transport**: Non-linear diffusion with convection activation (temperature-dependent)
-- **Ice-albedo feedback**: Higher albedo below freezing (tanh transition around 273K)
-- **Water vapor feedback**: Stronger greenhouse effect at higher temperatures
-- **Zone-based thermal inertia**: Equatorial zones have 10x higher heat capacity than polar
-- **Terrain effects**: Fractal noise elevation affects heat capacity and transport (mountains block, oceans enhance)
+**Longitude wrapping**: Always use `mod1(j ± 1, n_lon)` for periodic boundary.
 
-### Timing Parameters
+**Zenith returning nothing**: When sun below horizon, `get_zenith` returns `nothing` (not NaN). Check with `if zenith === nothing`.
 
-- Rotation period: 28 hours
-- Orbital period: 64 hours
-- Eclipse duration: 4 hours (occurs at orbital_phase = 0.5)
+**Pre-computed transport**: Terrain-based transport coefficients calculated at initialization and cached in moon structure.
 
-## Planned but Not Implemented
+**Time units**: Internal = seconds; user-facing = hours; save interval = 30 minutes.
 
-- Longitude-dependent heat capacity for oceans/continents
-- Pluto notebooks for interactive exploration
+## Physics Notes
+
+- `ROTATION_PERIOD = 28 hrs`
+- `SOLAR_CONSTANT = 2000 W/m²` (1.47× Earth)
+- Heat transport: conduction (15 W/m²·K⁻¹) + convection (30 W/m²·K⁻¹ above 270K)
+- Moisture barriers: Mountains block moisture (MOISTURE_BARRIER_STRENGTH = 8.0) more than heat (4.0)
+- Elevation: Normalized -1 to 1 (ocean to mountains)

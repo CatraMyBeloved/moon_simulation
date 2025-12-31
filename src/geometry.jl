@@ -61,7 +61,7 @@ Calculate solar heating at given time, latitude, and temperature (1D version).
     end
 
     cos_zenith = cos(zenith)
-    albedo = get_albedo(T)
+    albedo = compute_surface_albedo(T)
     air_mass = 1.0 / (cos_zenith + 0.01)
     transmission = exp(-SOLAR_OPTICAL_DEPTH * air_mass)
 
@@ -115,7 +115,7 @@ Same physics as get_solar, but uses longitude-aware zenith calculation.
     end
 
     cos_zenith = cos(zenith)
-    albedo = get_albedo(T)
+    albedo = compute_surface_albedo(T)
     air_mass = 1.0 / (cos_zenith + 0.01)
     transmission = exp(-SOLAR_OPTICAL_DEPTH * air_mass)
 

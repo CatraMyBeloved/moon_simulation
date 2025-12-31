@@ -1,12 +1,13 @@
 """
-1D ODE solver for latitude-band climate model
+1D ODE solver for latitude-band climate model.
 """
+
+using DifferentialEquations
 
 """
     derivatives_1d!(dT, temps, moon::MoonBody1D, t)
 
 Calculate temperature derivatives for each latitude band.
-
 This is the core ODE system: dT/dt = (heating - cooling + transport) / C
 """
 function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
@@ -16,39 +17,36 @@ function derivatives_1d!(dT, temps, moon::MoonBody1D, t)
     # Transport loop - has sequential dependencies, cannot parallelize
     fill!(transport, 0.0)
     @inbounds for i in 2:n
-        # Non-linear transport: use average temperature to determine coefficient
         T_avg = 0.5 * (temps[i-1] + temps[i])
-        k = get_transport_coefficient(T_avg)
+        k = compute_heat_transport_coefficient(T_avg)
         flow = k * (temps[i-1] - temps[i])
         transport[i] += flow
         transport[i-1] -= flow
     end
 
-    # Physics loop - embarrassingly parallel (each band is independent)
+    # Physics loop - embarrassingly parallel
     if should_thread(n)
         @inbounds Threads.@threads for i in 1:n
             Q_in = get_solar(t, moon.latitudes[i], temps[i])
 
-            # IR optical depth and transmissivity (dry atmosphere for 1D)
-            τ_IR = get_ir_optical_depth()
-            transmissivity = get_ir_transmissivity(τ_IR)
+            τ_IR = compute_total_ir_optical_depth()
+            transmissivity = compute_ir_transmissivity_from_optical_depth(τ_IR)
 
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
+            Q_out = compute_outgoing_longwave_radiation(temps[i], transmissivity)
 
-            # Use latitude-dependent heat capacity
-            heat_cap = get_heat_capacity(moon.latitudes[i])
+            heat_cap = compute_latitude_based_heat_capacity(moon.latitudes[i])
             dT[i] = (Q_in - Q_out + transport[i]) / heat_cap
         end
     else
         @inbounds @simd for i in 1:n
             Q_in = get_solar(t, moon.latitudes[i], temps[i])
 
-            τ_IR = get_ir_optical_depth()
-            transmissivity = get_ir_transmissivity(τ_IR)
+            τ_IR = compute_total_ir_optical_depth()
+            transmissivity = compute_ir_transmissivity_from_optical_depth(τ_IR)
 
-            Q_out = EMISSIVITY * STEFAN_BOLTZMANN * temps[i]^4 * transmissivity
+            Q_out = compute_outgoing_longwave_radiation(temps[i], transmissivity)
 
-            heat_cap = get_heat_capacity(moon.latitudes[i])
+            heat_cap = compute_latitude_based_heat_capacity(moon.latitudes[i])
             dT[i] = (Q_in - Q_out + transport[i]) / heat_cap
         end
     end
@@ -58,15 +56,6 @@ end
     run_simulation(moon::MoonBody1D, hours, T0; callback=nothing)
 
 Run a 1D climate simulation.
-
-# Arguments
-- `moon`: MoonBody1D structure
-- `hours`: Simulation duration in hours
-- `T0`: Initial temperatures (Kelvin) for each band
-- `callback`: Optional callback for progress reporting (default: nothing)
-
-# Returns
-- Solution object from DifferentialEquations.jl
 """
 function run_simulation(moon::MoonBody1D, hours::Real, T0::AbstractVector{<:Real}; callback=nothing)
     tspan = (0.0, hours * 3600)
@@ -83,22 +72,14 @@ function run_simulation(moon::MoonBody1D, hours::Real, T0::AbstractVector{<:Real
 end
 
 """
-    make_progress_callback(total_hours; update_interval_hours=500)
+    make_progress_callback(total_hours; update_interval_hours=100)
 
 Create a callback that prints simulation progress.
-
-# Arguments
-- `total_hours`: Total simulation duration in hours
-- `update_interval_hours`: How often to print progress (default: 500 hours)
-
-# Returns
-- PeriodicCallback suitable for passing to run_simulation
 """
 function make_progress_callback(total_hours::Real; update_interval_hours::Real=100)
     total_sec = total_hours * 3600
     interval_sec = update_interval_hours * 3600
 
-    # Print initial message
     println("  [Progress updates every $(round(Int, update_interval_hours)) hours]")
 
     callback = PeriodicCallback(interval_sec) do integrator

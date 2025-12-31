@@ -1,2 +1,12 @@
+# Output files
 *.png
 *.gif
+*.jls
+
+# Output directory contents (but keep structure)
+output/runs/
+output/latest/
+!output/.gitkeep
+
+# Claude Code
+CLAUDE.md

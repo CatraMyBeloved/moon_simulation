@@ -1,7 +1,7 @@
 ## Project: Hot Moon Climate Simulator
 
 ### Overview
-Build a 2D climate simulation for a tidally-locked moon with mountains, using energy balance ODEs (no fluid dynamics). Visualize temperature patterns, day/night cycles, and topographic effects.
+Build a 2D climate simulation for a moon with mountains, using energy balance ODEs (no fluid dynamics). Visualize temperature patterns, day/night cycles, and topographic effects.
 
 ---
 

@@ -78,6 +78,9 @@ Full spatial representation with topography support.
 - `_transport_cache::Vector{Float64}`: Pre-allocated buffer for ODE solver
 - `moisture_transport_coeffs::Array{Float64,3}`: Moisture transport modifiers [lat, lon, direction]
 - `_moisture_cache::Vector{Float64}`: Pre-allocated buffer for moisture transport
+- `_upper_U_cache::Vector{Float64}`: Pre-allocated buffer for upper mass transport
+- `_upper_M_cache::Vector{Float64}`: Pre-allocated buffer for upper moisture transport
+- `_zonal_mean_cache::Vector{Float64}`: Pre-allocated buffer for zonal mean T computation
 """
 struct MoonBody2D <: AbstractMoonBody
     n_lat::Int
@@ -90,6 +93,9 @@ struct MoonBody2D <: AbstractMoonBody
     _transport_cache::Vector{Float64}
     moisture_transport_coeffs::Array{Float64,3}
     _moisture_cache::Vector{Float64}
+    _upper_U_cache::Vector{Float64}
+    _upper_M_cache::Vector{Float64}
+    _zonal_mean_cache::Vector{Float64}
 end
 
 """
@@ -119,27 +125,33 @@ function MoonBody2D(n_lat::Int=18, n_lon::Int=36; seed::Int=42, sea_level::Float
     cell_areas ./= sum(cell_areas)
 
     # Generate terrain using fractal noise
-    sampler = create_elevation_sampler(seed=seed, octaves=octaves)
-    elevation = [generate_elevation(latitudes[i], longitudes[j], sampler,
-                                    sea_level=sea_level, scale=scale)
+    sampler = create_fractal_noise_sampler(seed=seed, octaves=octaves)
+    elevation = [sample_terrain_elevation(latitudes[i], longitudes[j], sampler,
+                                          sea_level=sea_level, scale=scale)
                  for i in 1:n_lat, j in 1:n_lon]
 
     # Calculate directional transport coefficients based on elevation
     # Includes: slope barriers, asymmetric downslope flow, ocean bonus
     transport_coeffs = zeros(Float64, n_lat, n_lon, 4)
-    calculate_transport_coefficients!(transport_coeffs, elevation, n_lat, n_lon)
+    populate_heat_transport_coefficients!(transport_coeffs, elevation, n_lat, n_lon)
 
     # Calculate moisture transport coefficients (stronger barrier effect)
     moisture_transport_coeffs = zeros(Float64, n_lat, n_lon, 4)
-    calculate_moisture_transport_coefficients!(moisture_transport_coeffs, elevation, n_lat, n_lon)
+    populate_moisture_transport_coefficients!(moisture_transport_coeffs, elevation, n_lat, n_lon)
 
     # Pre-allocated caches for ODE solver
     transport_cache = zeros(Float64, n_lat * n_lon)
     moisture_cache = zeros(Float64, n_lat * n_lon)
 
+    # Two-layer atmosphere caches
+    upper_U_cache = zeros(Float64, n_lat * n_lon)
+    upper_M_cache = zeros(Float64, n_lat * n_lon)
+    zonal_mean_cache = zeros(Float64, n_lat)
+
     return MoonBody2D(n_lat, n_lon, latitudes, longitudes, cell_areas,
                       elevation, transport_coeffs, transport_cache,
-                      moisture_transport_coeffs, moisture_cache)
+                      moisture_transport_coeffs, moisture_cache,
+                      upper_U_cache, upper_M_cache, zonal_mean_cache)
 end
 
 function Base.show(io::IO, moon::MoonBody2D)

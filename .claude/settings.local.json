@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:lazarusa.github.io)"
+      "WebFetch(domain:lazarusa.github.io)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ]
   }
 }

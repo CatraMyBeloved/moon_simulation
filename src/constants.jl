@@ -6,7 +6,7 @@ Physical constants for the Hot Moon simulation
 const STEFAN_BOLTZMANN = 5.67e-8
 
 # Solar constant at moon's orbit (W⋅m⁻²)
-const SOLAR_CONSTANT = 2200.0
+const SOLAR_CONSTANT = 2000.0
 
 # Orbital parameters (seconds)
 const ROTATION_PERIOD = 28.0 * 3600    # 28 hours
@@ -87,7 +87,7 @@ const ELEVATION_SCALE = 5000.0          # Max elevation in meters (for normalizi
 # Earth average: ~4 mm/day ≈ 5×10⁻⁵ kg/m²/s at typical ocean temps
 # This moon receives ~1.6× Earth's solar flux, so ~3-4× evaporation is plausible
 # At 300K: evap = 1×10⁻⁵ × 20 = 2×10⁻⁴ kg/m²/s ≈ 17 mm/day (4× Earth)
-const EVAP_RATE = 0.5e-5                # Base evaporation rate (kg/m²/s per K above threshold)
+const EVAP_RATE = 0.3e-5                # Base evaporation rate (kg/m²/s per K above threshold)
 const EVAP_THRESHOLD = 290.0            # Minimum temperature for evaporation (K)
 
 # Precipitation
@@ -97,8 +97,10 @@ const PRECIP_RATE = 0.002
 # Note: Unlike heat transport which is divided by heat capacity (~1e6), moisture
 # transport directly affects dM/dt. So this value must be much smaller to get
 # similar timescales (hours, not milliseconds).
-const MOISTURE_DIFFUSION = 1e-4       # Base moisture diffusion coefficient (1/s)
+const MOISTURE_DIFFUSION = 1e-4         # Base moisture diffusion coefficient (1/s)
 const MOISTURE_BARRIER_STRENGTH = 8.0   # Mountains block moisture more than heat
+const MOISTURE_DOWNSLOPE_PREFERENCE = 0.3  # Asymmetry factor for downhill moisture flow
+const MOISTURE_SLOPE_SENSITIVITY = 3.0  # Sensitivity of moisture flow to slope
 
 # Latent heat of vaporization (J/kg)
 const LATENT_HEAT = 2.5e6
@@ -173,6 +175,8 @@ const INIT_T_EQUATOR = 310.0     # K (~37°C) - equilibrium temp at equator
 const INIT_T_POLE = 250.0        # K (~-23°C) - equilibrium temp at poles
 const INIT_MOISTURE_DIFFUSE_ITERS = 15  # iterations for moisture diffusion
 const INIT_MOISTURE_DECAY = 0.7  # decay factor per diffusion step
+const INIT_MOISTURE_SATURATION_CAP = 0.8  # cap initial moisture at this fraction of saturation
+const DEFAULT_MOISTURE_ESTIMATE_KG_M2 = 3.0  # moisture estimate for temperature-only sims
 
 # ============================================================================
 # PERFORMANCE TUNING
@@ -183,3 +187,37 @@ const THREADING_MIN_CELLS = 100
 
 # Enable threading by default when Julia has multiple threads available
 const USE_THREADING = Ref(Threads.nthreads() > 1)
+
+# ============================================================================
+# TWO-LAYER ATMOSPHERE
+# ============================================================================
+
+# Ascent parameters
+const THERMAL_RESPONSE_SCALE = 20.0      # K - sensitivity to temperature anomaly
+const MIN_MOISTURE_CONVECTION = 3.0      # kg/m² - minimum M for deep convection
+const ASCENT_RATE_MAX = 5e-5             # 1/s - maximum ascent rate
+
+# Descent parameters
+const BASE_DESCENT_RATE = 1e-5           # 1/s - background subsidence everywhere
+const MASS_DESCENT_COEFF = 2e-4          # 1/s per unit excess U
+const POLAR_SINK_STRENGTH = 3e-5         # 1/s - enhanced descent at poles
+const POLAR_SINK_LAT = 60.0              # degrees - where polar sink begins
+
+# Moisture during ascent
+const LIFT_TEMPERATURE_DROP = 30.0       # K - adiabatic cooling during lift
+const MOISTURE_SURVIVE_FRACTION = 0.3    # fraction surviving to upper layer
+const LIFT_FRACTION = 0.1                # fraction of surface moisture lifted per unit ascent
+
+# Upper layer transport
+const UPPER_MERIDIONAL_COEFF = 1e-4      # 1/s - poleward mass flow rate
+const UPPER_ZONAL_COEFF = 5e-5           # 1/s - zonal pressure flow
+const WESTERLY_BIAS_STRENGTH = 2e-5      # 1/s - Coriolis-like westerly tendency
+
+# Descent suppression of precipitation
+const DESCENT_DRYING_SCALE = 2.0         # multiplicative factor on saturation per unit descent
+
+# Numerical safety
+const U_FLOOR = 0.1                      # minimum U for divisions
+const U_FLOOR_RESTORATION_RATE = 0.1     # rate of restoration when U < U_FLOOR
+const U_INITIAL = 1.0                    # initial upper mass (uniform)
+const M_UP_INITIAL = 0.05                # kg/m² - initial upper moisture

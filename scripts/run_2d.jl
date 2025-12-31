@@ -6,7 +6,6 @@ using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
 using Statistics
-using Plots
 
 include(joinpath(@__DIR__, "../src/HotMoon.jl"))
 using .HotMoon
@@ -15,7 +14,7 @@ println("="^60)
 println("Hot Moon 2D Climate Simulation")
 println("="^60)
 
-# Create moon with 36 lat × 72 lon grid (2.5° × 5° resolution)
+# Create moon with 90 lat × 180 lon grid (2° × 2° resolution)
 println("\nCreating moon...")
 moon = HotMoonBody(90, 180, seed=32, sea_level=0.0, scale=0.01, octaves=5)
 println(moon)
@@ -51,31 +50,6 @@ println("="^60)
 println("  Mean temperature: $(round(global_mean, digits=1))°C")
 println("  Min temperature:  $(round(global_min, digits=1))°C")
 println("  Max temperature:  $(round(global_max, digits=1))°C")
-# Latitude profile (average across longitudes)
-println("\n" * "="^60)
-println("LATITUDE PROFILE (averaged across longitudes)")
-println("="^60)
-for i in 1:moon.n_lat
-    lat = moon.latitudes[i]
-    T_mean = mean(T_final_C[i, :])
-    T_min = minimum(T_final_C[i, :])
-    T_max = maximum(T_final_C[i, :])
-    println("  $(lpad(round(Int, lat), 2))°: mean=$(lpad(round(T_mean, digits=1), 6))°C, " *
-            "range=[$(lpad(round(T_min, digits=1), 6)), $(lpad(round(T_max, digits=1), 6))]°C")
-end
-
-# Longitude slice at equator
-equator_idx = argmin(abs.(moon.latitudes))
-println("\n" * "="^60)
-println("EQUATOR LONGITUDE PROFILE (lat ≈ $(round(moon.latitudes[equator_idx], digits=1))°)")
-println("="^60)
-equator_temps = T_final_C[equator_idx, :]
-for j in 1:4:moon.n_lon  # Every 4th longitude to keep output manageable
-    lon = moon.longitudes[j]
-    T = equator_temps[j]
-    bar = repeat("█", max(0, round(Int, (T + 50) / 5)))  # Simple ASCII bar
-    println("  $(lpad(round(Int, lon), 3))°: $(lpad(round(T, digits=1), 6))°C  $bar")
-end
 
 # Find hottest and coldest spots
 max_idx = argmax(T_final_C)
@@ -91,39 +65,11 @@ println("="^60)
 println("  Hottest: $(round(global_max, digits=1))°C at lat=$(round(hot_lat, digits=1))°, lon=$(round(hot_lon, digits=1))°")
 println("  Coldest: $(round(global_min, digits=1))°C at lat=$(round(cold_lat, digits=1))°, lon=$(round(cold_lon, digits=1))°")
 
-# Generate visualizations
-println("\n" * "="^60)
-println("GENERATING PLOTS")
-println("="^60)
+# === Use unified output system ===
+config = RunConfig("2d")
+ctx = initialize_run(config)
 
-mkpath("output/plots_2d")
-
-println("  Creating global mean (full simulation)...")
-p1 = plot_global_mean_full(sol, moon, Temperature)
-savefig(p1, "output/plots_2d/global_mean_full.png")
-
-println("  Creating global mean (last 800h detail)...")
-p2 = plot_global_mean_detail(sol, moon, Temperature, hours=800)
-savefig(p2, "output/plots_2d/global_mean_detail.png")
-
-println("  Creating temperature snapshot...")
-p3 = plot_snapshot(sol, moon, Temperature)
-savefig(p3, "output/plots_2d/snapshot.png")
-
-println("  Creating terrain map...")
-p_terrain = plot_elevation_map(moon)
-savefig(p_terrain, "output/plots_2d/terrain.png")
-
-println("  Creating Hovmöller diagrams...")
-p4a = plot_hovmoeller_longitude(sol, moon, Temperature)
-savefig(p4a, "output/plots_2d/hovmoeller_longitude.png")
-p4b = plot_hovmoeller_latitude(sol, moon, Temperature)
-savefig(p4b, "output/plots_2d/hovmoeller_latitude.png")
-
-println("  Creating latitude profile...")
-p5 = plot_latitude_mean_range(sol, moon, Temperature)
-savefig(p5, "output/plots_2d/latitude_range.png")
-
-println("\n" * "="^60)
-println("Done! Plots saved to output/plots_2d/")
-println("="^60)
+save_results!(ctx, sol, moon, T0=T0)
+generate_plots!(ctx, sol, moon)
+generate_animations!(ctx, sol, moon, hours=448, frame_skip=4, fps=10)
+finalize_run!(ctx)
