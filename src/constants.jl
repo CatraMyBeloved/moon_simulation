@@ -194,13 +194,13 @@ const USE_THREADING = Ref(Threads.nthreads() > 1)
 
 # Ascent parameters
 const THERMAL_RESPONSE_SCALE = 20.0      # K - sensitivity to temperature anomaly
-const MIN_MOISTURE_CONVECTION = 3.0      # kg/m² - minimum M for deep convection
-const ASCENT_RATE_MAX = 5e-5             # 1/s - maximum ascent rate
+const MIN_MOISTURE_CONVECTION = 2.0      # kg/m² - minimum M for deep convection (lowered for easier triggering)
+const ASCENT_RATE_MAX = 1e-4             # 1/s - maximum ascent rate (doubled for better balance)
 
 # Descent parameters
-const BASE_DESCENT_RATE = 1e-5           # 1/s - background subsidence everywhere
-const MASS_DESCENT_COEFF = 2e-4          # 1/s per unit excess U
-const POLAR_SINK_STRENGTH = 3e-5         # 1/s - enhanced descent at poles
+const BASE_DESCENT_RATE = 5e-6           # 1/s - background subsidence everywhere (halved for stability)
+const MASS_DESCENT_COEFF = 1.5e-4        # 1/s per unit excess U (reduced slightly)
+const POLAR_SINK_STRENGTH = 2e-5         # 1/s - enhanced descent at poles (reduced)
 const POLAR_SINK_LAT = 60.0              # degrees - where polar sink begins
 
 # Moisture during ascent

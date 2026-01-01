@@ -597,12 +597,31 @@ function _copy_to_latest(ctx::RunContext)
 
     # Remove old latest if exists
     if isdir(latest_dir)
-        rm(latest_dir, recursive=true)
+        rm(latest_dir, recursive=true, force=true)
     end
 
-    # Copy entire run directory to latest
-    cp(ctx.run_dir, latest_dir)
-    println("  Copied to output/latest/")
+    # Small delay to let Windows release file handles from GIF creation
+    sleep(0.5)
+
+    # Copy entire run directory to latest with retry logic for Windows
+    try
+        cp(ctx.run_dir, latest_dir, force=true)
+        println("  Copied to output/latest/")
+    catch e
+        if Sys.iswindows()
+            # Windows file locking - retry after longer delay
+            sleep(1.0)
+            try
+                cp(ctx.run_dir, latest_dir, force=true)
+                println("  Copied to output/latest/ (after retry)")
+            catch e2
+                @warn "Could not copy to latest/ (Windows file locking)" exception=e2
+                println("  Warning: Could not copy to output/latest/ - files may be locked")
+            end
+        else
+            rethrow(e)
+        end
+    end
 end
 
 # =============================================================================

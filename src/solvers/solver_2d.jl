@@ -221,6 +221,20 @@ function compute_zonal_mean_temperature!(zonal_T::Vector, T, n_lat::Int, n_lon::
 end
 
 """
+    apply_upwind_moisture_transport(flow, U_nb, M_up_nb, specific_M_local) -> Float64
+
+Helper for upwind moisture transport in upper layer.
+Avoids closure allocation by passing specific_M as parameter.
+"""
+@inline function apply_upwind_moisture_transport(flow::Real, U_nb::Real, M_up_nb::Real, specific_M_local::Real)
+    if flow > 0  # inflow from neighbor
+        return flow * max(M_up_nb, 0.0) / max(U_nb, U_FLOOR)
+    else  # outflow to neighbor
+        return flow * specific_M_local
+    end
+end
+
+"""
     compute_upper_layer_transport!(U_transport, M_up_transport, U, M_up, moon, i, j)
 
 Compute upper layer mass and moisture transport for cell (i,j) using upwind scheme.
@@ -233,22 +247,13 @@ Compute upper layer mass and moisture transport for cell (i,j) using upwind sche
     M_up_here = max(M_up[i, j], 0.0)
     specific_M = M_up_here / U_here
 
-    # Helper for upwind moisture transport
-    apply_upwind_moisture = (flow, U_nb, M_up_nb) -> begin
-        if flow > 0  # inflow
-            return flow * max(M_up_nb, 0.0) / max(U_nb, U_FLOOR)
-        else  # outflow
-            return flow * specific_M
-        end
-    end
-
     # North neighbor
     if i > 1
         U_nb = max(U[i-1, j], U_FLOOR)
         ΔU = U_nb - U_here
         flow = UPPER_MERIDIONAL_COEFF * ΔU
         U_transport[i, j] += flow
-        M_up_transport[i, j] += apply_upwind_moisture(flow, U_nb, M_up[i-1, j])
+        M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i-1, j], specific_M)
     end
 
     # South neighbor
@@ -257,7 +262,7 @@ Compute upper layer mass and moisture transport for cell (i,j) using upwind sche
         ΔU = U_nb - U_here
         flow = UPPER_MERIDIONAL_COEFF * ΔU
         U_transport[i, j] += flow
-        M_up_transport[i, j] += apply_upwind_moisture(flow, U_nb, M_up[i+1, j])
+        M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i+1, j], specific_M)
     end
 
     # East neighbor (includes westerly bias)
@@ -268,7 +273,7 @@ Compute upper layer mass and moisture transport for cell (i,j) using upwind sche
     flow_westerly = WESTERLY_BIAS_STRENGTH * abs(sin(deg2rad(lat))) * U_here
     flow = flow_pressure - flow_westerly  # westerly: outflow to east
     U_transport[i, j] += flow
-    M_up_transport[i, j] += apply_upwind_moisture(flow, U_nb, M_up[i, j_east])
+    M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i, j_east], specific_M)
 
     # West neighbor (includes westerly bias)
     j_west = mod1(j - 1, n_lon)
@@ -276,7 +281,7 @@ Compute upper layer mass and moisture transport for cell (i,j) using upwind sche
     ΔU = U_nb - U_here
     flow = UPPER_ZONAL_COEFF * ΔU + flow_westerly  # westerly: inflow from west
     U_transport[i, j] += flow
-    M_up_transport[i, j] += apply_upwind_moisture(flow, U_nb, M_up[i, j_west])
+    M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i, j_west], specific_M)
 end
 
 """
@@ -340,7 +345,13 @@ function derivatives_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
             precip_ascent, M_to_upper = compute_ascent_moisture_transfer(ascent, M_cell, T_cell)
             M_from_upper = compute_descent_moisture_transfer(descent, M_up_cell, U_cell)
 
-            dM_up[i, j] = M_to_upper - M_from_upper + M_up_transport[i, j]
+            dM_up_raw = M_to_upper - M_from_upper + M_up_transport[i, j]
+            # Prevent M_up from going negative: if already near zero and derivative is negative, clamp
+            if M_up_cell <= 0.01 && dM_up_raw < 0.0
+                dM_up[i, j] = max(dM_up_raw, -M_up_cell * 0.1)  # Soft floor
+            else
+                dM_up[i, j] = dM_up_raw
+            end
 
             # Surface radiation
             Q_in = get_solar_2d(t, lat, lon, T_cell)
@@ -353,11 +364,15 @@ function derivatives_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
 
             heat_cap = compute_biome_blended_heat_capacity(T_cell, M_cell, elev)
 
-            # Surface moisture with descent suppression
+            # Surface moisture with descent suppression and orographic effect
             evap = compute_ocean_evaporation_rate(T_cell, elev)
 
+            # Apply lapse rate cooling for elevated terrain (orographic effect)
+            elev_meters = max(0.0, elev) * ELEVATION_SCALE
+            T_at_altitude = T_cell - LAPSE_RATE * elev_meters
+
             drying_factor = compute_descent_saturation_multiplier(descent)
-            M_sat_effective = compute_saturation_moisture_at_temperature(T_cell) * drying_factor
+            M_sat_effective = compute_saturation_moisture_at_temperature(T_at_altitude) * drying_factor
 
             precip_surf = M_cell > M_sat_effective ? PRECIP_RATE * (M_cell - M_sat_effective) : 0.0
 
@@ -444,10 +459,13 @@ function run_simulation_with_twolayer_atmosphere(moon::MoonBody2D, hours::Real,
 
     prob = ODEProblem(derivatives_twolayer_atmosphere!, u0, tspan, moon)
 
+    # Use Tsit5 (explicit) with increased maxiters for long simulations
+    # Implicit solvers are too slow for this problem size (Jacobian is 3200x3200)
+    # The numerical fixes (positivity constraints, tuned parameters) help stability
     if callback === nothing
-        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-6, saveat=1800.0)
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-6, saveat=1800.0, maxiters=10_000_000)
     else
-        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-6, saveat=1800.0, callback=callback)
+        sol = solve(prob, Tsit5(), reltol=1e-6, abstol=1e-6, saveat=1800.0, maxiters=10_000_000, callback=callback)
     end
 
     return sol

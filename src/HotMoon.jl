@@ -83,6 +83,7 @@ export compute_saturation_moisture_at_temperature
 export compute_ocean_evaporation_rate, compute_orographic_precipitation_rate
 export compute_convective_ascent_rate, compute_total_descent_rate
 export compute_ascent_moisture_transfer, compute_descent_moisture_transfer
+export compute_descent_saturation_multiplier, compute_upper_mass_floor_restoration
 export estimate_initial_temperature_and_moisture
 
 # =============================================================================

@@ -104,15 +104,19 @@ println("  Mean M_up: $(round(global_mean_M_up, digits=4)) kg/m²")
 println("  Min M_up:  $(round(global_min_M_up, digits=4)) kg/m²")
 println("  Max M_up:  $(round(global_max_M_up, digits=4)) kg/m²")
 
-# Compute precipitation field at final time (including descent suppression)
+# Compute precipitation field at final time (including descent suppression and orographic effect)
 precip_final = zeros(moon.n_lat, moon.n_lon)
 for i in 1:moon.n_lat
     for j in 1:moon.n_lon
         lat = moon.latitudes[i]
+        elev = moon.elevation[i, j]
         U_cell = max(U_FLOOR, U_final[i, j])
         descent = compute_total_descent_rate(U_cell, lat)
         drying_factor = compute_descent_saturation_multiplier(descent)
-        M_sat_effective = compute_saturation_moisture_at_temperature(T_final[i, j]) * drying_factor
+        # Apply orographic effect (lapse rate cooling at altitude)
+        elev_meters = max(0.0, elev) * ELEVATION_SCALE
+        T_at_altitude = T_final[i, j] - LAPSE_RATE * elev_meters
+        M_sat_effective = compute_saturation_moisture_at_temperature(T_at_altitude) * drying_factor
         if M_final[i, j] > M_sat_effective
             precip_final[i, j] = PRECIP_RATE * (M_final[i, j] - M_sat_effective)
         end
