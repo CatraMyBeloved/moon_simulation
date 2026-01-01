@@ -209,7 +209,7 @@ const MOISTURE_SURVIVE_FRACTION = 0.3    # fraction surviving to upper layer
 const LIFT_FRACTION = 0.1                # fraction of surface moisture lifted per unit ascent
 
 # Upper layer transport
-const UPPER_MERIDIONAL_COEFF = 1e-4      # 1/s - poleward mass flow rate
+const UPPER_MERIDIONAL_COEFF = 2.5e-4    # 1/s - poleward mass flow rate (raised from 1e-4)
 const UPPER_ZONAL_COEFF = 5e-5           # 1/s - zonal pressure flow
 const WESTERLY_BIAS_STRENGTH = 2e-5      # 1/s - Coriolis-like westerly tendency
 
@@ -217,8 +217,8 @@ const WESTERLY_BIAS_STRENGTH = 2e-5      # 1/s - Coriolis-like westerly tendency
 const DESCENT_DRYING_SCALE = 2.0         # multiplicative factor on saturation per unit descent
 
 # Numerical safety
-const U_FLOOR = 0.1                      # minimum U for divisions
-const U_FLOOR_RESTORATION_RATE = 0.1     # rate of restoration when U < U_FLOOR
+const U_FLOOR = 0.3                      # minimum U for divisions (raised from 0.1)
+const U_FLOOR_RESTORATION_RATE = 0.5     # rate of restoration when U < U_FLOOR (raised from 0.1)
 const U_INITIAL = 1.0                    # initial upper mass (uniform)
 const M_UP_INITIAL = 0.05                # kg/m² - initial upper moisture
 
