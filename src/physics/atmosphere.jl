@@ -215,3 +215,116 @@ Prevents numerical instability from negative or very small U.
         return 0.0
     end
 end
+
+# =============================================================================
+# Upper Layer Temperature Physics (Phase 2 - Full Two-Layer Atmosphere)
+# =============================================================================
+
+"""
+    compute_ascent_heat_transfer(ascent_rate, T_surf, T_up, U_above) -> Float64
+
+Calculate heat transfer from surface to upper layer during ascent.
+Ascending air carries sensible heat upward.
+
+Returns temperature change rate for upper layer (K/s).
+"""
+@inline function compute_ascent_heat_transfer(ascent_rate::Real, T_surf::Real,
+                                               T_up::Real, U_above::Real)
+    if ascent_rate <= 0.0
+        return 0.0
+    end
+
+    ΔT = T_surf - T_up
+    heat_flux = ascent_rate * ΔT * ASCENT_HEAT_TRANSFER_FRACTION
+    # Normalize by upper layer mass to get temperature change
+    return heat_flux / max(U_above, U_FLOOR)
+end
+
+"""
+    compute_upper_layer_latent_heating(precip_ascent, U_above) -> Float64
+
+Calculate latent heat release in upper layer from condensation during ascent.
+Moisture that precipitates during ascent releases latent heat to the upper layer.
+
+Returns temperature change rate for upper layer (K/s).
+"""
+@inline function compute_upper_layer_latent_heating(precip_ascent::Real, U_above::Real)
+    if precip_ascent <= 0.0
+        return 0.0
+    end
+
+    # Latent heat released (J/m²/s)
+    Q = LATENT_HEAT * precip_ascent
+    # Convert to temperature change rate using upper layer heat capacity
+    return Q / (max(U_above, U_FLOOR) * UPPER_LAYER_HEAT_CAPACITY)
+end
+
+"""
+    compute_upper_layer_radiative_cooling(T_up) -> Float64
+
+Calculate radiative cooling of upper layer toward equilibrium temperature.
+Upper layer loses heat to space via infrared radiation.
+
+Returns temperature change rate for upper layer (K/s), typically negative.
+"""
+@inline function compute_upper_layer_radiative_cooling(T_up::Real)
+    ΔT = T_up - T_UP_EQUILIBRIUM
+    return -UPPER_RADIATIVE_COOLING_RATE * ΔT
+end
+
+"""
+    compute_descent_heat_transfer(descent_rate, T_up, U_above) -> Float64
+
+Calculate heat loss from upper layer during descent.
+Descending air carries heat back to surface (adiabatically warms).
+
+Returns temperature change rate for upper layer (K/s), typically negative.
+"""
+@inline function compute_descent_heat_transfer(descent_rate::Real, T_up::Real, U_above::Real)
+    if descent_rate <= 0.0
+        return 0.0
+    end
+
+    # Descending air warms adiabatically - this heat comes from the upper layer
+    # The descended air would be warmer than T_up by DESCENT_ADIABATIC_WARMING
+    # This represents heat leaving the upper layer
+    normalized_descent = descent_rate / BASE_DESCENT_RATE
+    heat_loss_rate = descent_rate * DESCENT_ADIABATIC_WARMING * normalized_descent
+    return -heat_loss_rate / max(U_above, U_FLOOR)
+end
+
+"""
+    compute_vertical_instability_factor(T_surf, T_up) -> Float64
+
+Calculate convective instability factor based on vertical temperature gradient.
+Hot surface with cold upper layer = unstable = enhanced convection.
+
+Returns multiplication factor for ascent rate (≥ 1.0).
+"""
+@inline function compute_vertical_instability_factor(T_surf::Real, T_up::Real)
+    ΔT_vertical = T_surf - T_up
+    instability = ΔT_vertical / VERTICAL_INSTABILITY_SCALE
+    return 1.0 + max(0.0, instability)
+end
+
+"""
+    compute_temperature_descent_factor(T_up, T_up_zonal_mean) -> Float64
+
+Calculate descent enhancement due to cold upper layer anomaly.
+Cold upper air is denser and sinks faster.
+
+Returns multiplication factor for descent rate (≥ 1.0).
+"""
+@inline function compute_temperature_descent_factor(T_up::Real, T_up_zonal_mean::Real)
+    cold_anomaly = max(0.0, T_up_zonal_mean - T_up)
+    return 1.0 + T_DESCENT_SENSITIVITY * cold_anomaly / 10.0
+end
+
+"""
+    clamp_upper_temperature(T_up) -> Float64
+
+Clamp upper temperature to valid range for numerical stability.
+"""
+@inline function clamp_upper_temperature(T_up::Real)
+    return clamp(T_up, T_UP_FLOOR, T_UP_CEILING)
+end

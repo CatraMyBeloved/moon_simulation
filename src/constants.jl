@@ -221,3 +221,27 @@ const U_FLOOR = 0.1                      # minimum U for divisions
 const U_FLOOR_RESTORATION_RATE = 0.1     # rate of restoration when U < U_FLOOR
 const U_INITIAL = 1.0                    # initial upper mass (uniform)
 const M_UP_INITIAL = 0.05                # kg/m² - initial upper moisture
+
+# ============================================================================
+# UPPER LAYER TEMPERATURE (Phase 2 - Full Two-Layer Atmosphere)
+# ============================================================================
+
+# Initial conditions
+const T_UP_INITIAL = 250.0              # K - initial upper temperature (~-23°C)
+const T_UP_EQUILIBRIUM = 240.0          # K - radiative equilibrium (warmer due to 2000 W/m² solar)
+
+# Heat capacity and radiation
+const UPPER_LAYER_HEAT_CAPACITY = 1e7   # J/m²/K - effective heat capacity of upper layer
+const UPPER_RADIATIVE_COOLING_RATE = 2e-6  # 1/s - radiative relaxation rate
+
+# Vertical heat exchange
+const ASCENT_HEAT_TRANSFER_FRACTION = 0.3  # fraction of ΔT transferred during ascent
+const DESCENT_ADIABATIC_WARMING = 30.0     # K - warming during full descent
+
+# Temperature-circulation feedback
+const VERTICAL_INSTABILITY_SCALE = 50.0    # K - sensitivity of ascent to T_surf - T_up
+const T_DESCENT_SENSITIVITY = 0.5          # descent enhancement per K cold anomaly
+
+# Numerical stability for T_up
+const T_UP_FLOOR = 180.0                # K - minimum upper temperature
+const T_UP_CEILING = 320.0              # K - maximum upper temperature

@@ -36,7 +36,7 @@ using Printf
 Configuration for what to save and how.
 
 # Fields
-- `simulation_type`: One of "1d", "2d", "2d_moisture", "2d_twolayer"
+- `simulation_type`: One of "1d", "2d", "2d_moisture", "2d_twolayer", "2d_full_twolayer"
 - `description`: Optional user description for the run
 - `save_solution`: Whether to serialize the ODE solution
 - `save_moon`: Whether to serialize the moon configuration
@@ -239,6 +239,9 @@ function extract_temperature_field(u, moon::MoonBody2D)
     elseif length(u) == 4 * n_cells
         # Two-layer: T, M, U, M_up
         return reshape(u[1:n_cells], moon.n_lat, moon.n_lon)
+    elseif length(u) == 5 * n_cells
+        # Full two-layer: T, M, U, M_up, T_up
+        return reshape(u[1:n_cells], moon.n_lat, moon.n_lon)
     else
         error("Unknown state size: $(length(u))")
     end
@@ -274,6 +277,8 @@ function generate_plots!(ctx::RunContext, sol, moon)
         _generate_plots_2d_moisture!(ctx, sol, moon)
     elseif sim_type == "2d_twolayer"
         _generate_plots_2d_twolayer!(ctx, sol, moon)
+    elseif sim_type == "2d_full_twolayer"
+        _generate_plots_2d_full_twolayer!(ctx, sol, moon)
     else
         @warn "Unknown simulation type: $sim_type"
     end
@@ -426,6 +431,82 @@ function _generate_plots_2d_twolayer!(ctx::RunContext, sol, moon)
     _save_plot(plot_biome_with_legend(sol, moon), plots_dir, "biome_with_legend.png", ctx)
 end
 
+function _generate_plots_2d_full_twolayer!(ctx::RunContext, sol, moon)
+    plots_dir = ctx.plots_dir
+
+    # Temperature plots
+    println("  Temperature plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, Temperature; hours=nothing),
+               plots_dir, "temperature_global_mean_full.png", ctx)
+    _save_plot(plot_global_mean_timeseries(sol, moon, Temperature; hours=800),
+               plots_dir, "temperature_global_mean_detail.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, Temperature),
+               plots_dir, "temperature.png", ctx)
+    _save_plot(plot_longitude_time_hovmoeller(sol, moon, Temperature),
+               plots_dir, "temperature_hovmoeller_longitude.png", ctx)
+    _save_plot(plot_latitude_time_hovmoeller(sol, moon, Temperature),
+               plots_dir, "temperature_hovmoeller_latitude.png", ctx)
+    _save_plot(plot_latitude_mean_range(sol, moon, Temperature),
+               plots_dir, "temperature_latitude_range.png", ctx)
+
+    # Surface moisture plots
+    println("  Surface moisture plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, Moisture; hours=nothing),
+               plots_dir, "moisture_global_mean_full.png", ctx)
+    _save_plot(plot_global_mean_timeseries(sol, moon, Moisture; hours=800),
+               plots_dir, "moisture_global_mean_detail.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, Moisture),
+               plots_dir, "moisture.png", ctx)
+    _save_plot(plot_longitude_time_hovmoeller(sol, moon, Moisture),
+               plots_dir, "moisture_hovmoeller_longitude.png", ctx)
+    _save_plot(plot_latitude_time_hovmoeller(sol, moon, Moisture),
+               plots_dir, "moisture_hovmoeller_latitude.png", ctx)
+    _save_plot(plot_latitude_mean_range(sol, moon, Moisture),
+               plots_dir, "moisture_latitude_range.png", ctx)
+
+    # Upper mass plots
+    println("  Upper mass plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, UpperMass; hours=nothing),
+               plots_dir, "upper_mass_global_mean_full.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, UpperMass),
+               plots_dir, "upper_mass.png", ctx)
+    _save_plot(plot_latitude_time_hovmoeller(sol, moon, UpperMass),
+               plots_dir, "upper_mass_hovmoeller_latitude.png", ctx)
+
+    # Upper moisture plots
+    println("  Upper moisture plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, UpperMoisture; hours=nothing),
+               plots_dir, "upper_moisture_global_mean_full.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, UpperMoisture),
+               plots_dir, "upper_moisture.png", ctx)
+
+    # Upper temperature plots (new for full two-layer)
+    println("  Upper temperature plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, UpperTemperature; hours=nothing),
+               plots_dir, "upper_temperature_global_mean_full.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, UpperTemperature),
+               plots_dir, "upper_temperature.png", ctx)
+    _save_plot(plot_latitude_time_hovmoeller(sol, moon, UpperTemperature),
+               plots_dir, "upper_temperature_hovmoeller_latitude.png", ctx)
+    _save_plot(plot_latitude_mean_range(sol, moon, UpperTemperature),
+               plots_dir, "upper_temperature_latitude_range.png", ctx)
+
+    # Precipitation plots
+    println("  Precipitation plots...")
+    _save_plot(plot_global_mean_timeseries(sol, moon, Precipitation; hours=nothing),
+               plots_dir, "precipitation_global_mean_full.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, Precipitation),
+               plots_dir, "precipitation.png", ctx)
+    _save_plot(plot_latitude_time_hovmoeller(sol, moon, Precipitation),
+               plots_dir, "precipitation_hovmoeller_latitude.png", ctx)
+
+    # Terrain and biome
+    println("  Terrain and biome maps...")
+    _save_plot(plot_elevation_map(moon), plots_dir, "terrain.png", ctx)
+    _save_plot(plot_field_snapshot(sol, moon, Biome), plots_dir, "biome.png", ctx)
+    _save_plot(plot_biome_with_legend(sol, moon), plots_dir, "biome_with_legend.png", ctx)
+end
+
 function _save_plot(p, dir, filename, ctx)
     path = joinpath(dir, filename)
     savefig(p, path)
@@ -491,6 +572,23 @@ function generate_animations!(ctx::RunContext, sol, moon; hours::Real=448, fps::
         push!(ctx.files_saved, "plots/moisture.gif")
         push!(ctx.files_saved, "plots/upper_mass.gif")
         push!(ctx.files_saved, "plots/upper_moisture.gif")
+
+    elseif sim_type == "2d_full_twolayer"
+        animate_field_evolution(sol, moon, Temperature, joinpath(plots_dir, "temperature.gif"),
+                               hours=hours, frame_skip=frame_skip, fps=fps)
+        animate_field_evolution(sol, moon, Moisture, joinpath(plots_dir, "moisture.gif"),
+                               hours=hours, frame_skip=frame_skip, fps=fps)
+        animate_field_evolution(sol, moon, UpperMass, joinpath(plots_dir, "upper_mass.gif"),
+                               hours=hours, frame_skip=frame_skip, fps=fps)
+        animate_field_evolution(sol, moon, UpperMoisture, joinpath(plots_dir, "upper_moisture.gif"),
+                               hours=hours, frame_skip=frame_skip, fps=fps)
+        animate_field_evolution(sol, moon, UpperTemperature, joinpath(plots_dir, "upper_temperature.gif"),
+                               hours=hours, frame_skip=frame_skip, fps=fps)
+        push!(ctx.files_saved, "plots/temperature.gif")
+        push!(ctx.files_saved, "plots/moisture.gif")
+        push!(ctx.files_saved, "plots/upper_mass.gif")
+        push!(ctx.files_saved, "plots/upper_moisture.gif")
+        push!(ctx.files_saved, "plots/upper_temperature.gif")
     end
 end
 

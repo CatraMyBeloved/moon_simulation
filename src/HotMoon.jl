@@ -67,6 +67,7 @@ export HotMoonBody  # Convenience constructor
 export run_simulation
 export run_simulation_with_moisture
 export run_simulation_with_twolayer_atmosphere
+export run_simulation_with_full_twolayer_atmosphere
 export make_progress_callback
 
 
@@ -84,6 +85,10 @@ export compute_ocean_evaporation_rate, compute_orographic_precipitation_rate
 export compute_convective_ascent_rate, compute_total_descent_rate
 export compute_ascent_moisture_transfer, compute_descent_moisture_transfer
 export compute_descent_saturation_multiplier, compute_upper_mass_floor_restoration
+export compute_ascent_heat_transfer, compute_upper_layer_latent_heating
+export compute_upper_layer_radiative_cooling, compute_descent_heat_transfer
+export compute_vertical_instability_factor, compute_temperature_descent_factor
+export clamp_upper_temperature
 export estimate_initial_temperature_and_moisture
 
 # =============================================================================
@@ -116,7 +121,7 @@ export get_zenith_2d, get_solar_2d
 
 # Variable types for dispatch
 export PlotVariable, Temperature, Moisture, Precipitation
-export UpperMass, UpperMoisture, Biome
+export UpperMass, UpperMoisture, UpperTemperature, Biome
 
 # Generic 2D visualization
 export plot_global_mean_timeseries, plot_field_snapshot
@@ -145,9 +150,11 @@ export set_threading, get_threading_status
 # =============================================================================
 
 export unpack_temperature_field, unpack_moisture_field
-export unpack_upper_mass_field, unpack_upper_moisture_field
-export pack_temperature_moisture_state, pack_twolayer_state
-export is_temperature_only_state, is_temperature_moisture_state, is_twolayer_state
+export unpack_upper_mass_field, unpack_upper_moisture_field, unpack_upper_temperature_field
+export unpack_full_twolayer_state, unpack_full_twolayer_derivatives
+export pack_temperature_moisture_state, pack_twolayer_state, pack_full_twolayer_state
+export is_temperature_only_state, is_temperature_moisture_state
+export is_twolayer_state, is_full_twolayer_state
 
 # =============================================================================
 # Exports: Grid Iteration
@@ -181,6 +188,9 @@ export BASE_DESCENT_RATE, MASS_DESCENT_COEFF, POLAR_SINK_STRENGTH, POLAR_SINK_LA
 export LIFT_TEMPERATURE_DROP, MOISTURE_SURVIVE_FRACTION, LIFT_FRACTION
 export UPPER_MERIDIONAL_COEFF, UPPER_ZONAL_COEFF, WESTERLY_BIAS_STRENGTH
 export DESCENT_DRYING_SCALE, U_FLOOR, U_INITIAL, M_UP_INITIAL
+export T_UP_INITIAL, T_UP_EQUILIBRIUM, UPPER_LAYER_HEAT_CAPACITY, UPPER_RADIATIVE_COOLING_RATE
+export ASCENT_HEAT_TRANSFER_FRACTION, DESCENT_ADIABATIC_WARMING
+export VERTICAL_INSTABILITY_SCALE, T_DESCENT_SENSITIVITY, T_UP_FLOOR, T_UP_CEILING
 export DEFAULT_MOISTURE_ESTIMATE_KG_M2, INIT_MOISTURE_SATURATION_CAP
 
 end # module
