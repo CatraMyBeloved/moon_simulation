@@ -1,5 +1,5 @@
 """
-Main script to run 2D Hot Moon simulation with full two-layer atmosphere (including T_up)
+Main script to run 2D Hot Moon simulation with two-layer atmosphere (T, M, U, M_up)
 """
 
 using Pkg
@@ -11,12 +11,12 @@ include(joinpath(@__DIR__, "../src/HotMoon.jl"))
 using .HotMoon
 
 println("="^60)
-println("Hot Moon 2D Climate Simulation (Full Two-Layer Atmosphere)")
+println("Hot Moon 2D Climate Simulation (Two-Layer Atmosphere)")
 println("="^60)
 
-# Create moon with 45 lat × 90 lon grid (4° × 4° resolution)
+# Create moon with 20 lat × 40 lon grid
 println("\nCreating moon...")
-moon = HotMoonBody(45, 90, seed=32, sea_level=0.0, scale=0.01, octaves=5)
+moon = HotMoonBody(20, 40, seed=32, sea_level=0.0, scale=0.01, octaves=5)
 println(moon)
 println("  Total cells: $(moon.n_lat * moon.n_lon)")
 
@@ -34,31 +34,28 @@ println("Initial moisture range: $(round(minimum(M0), digits=2)) to $(round(maxi
 # Initial upper layer state (uniform)
 U0 = fill(U_INITIAL, moon.n_lat, moon.n_lon)
 M_up0 = fill(M_UP_INITIAL, moon.n_lat, moon.n_lon)
-T_up0 = fill(T_UP_INITIAL, moon.n_lat, moon.n_lon)
 println("Initial upper mass: $(U_INITIAL) (uniform)")
 println("Initial upper moisture: $(M_UP_INITIAL) kg/m² (uniform)")
-println("Initial upper temperature: $(T_UP_INITIAL) K ($(round(T_UP_INITIAL - 273.15, digits=1))°C, uniform)")
 
 # Run simulation
 sim_hours = 15000.0  # Long enough to see circulation develop
-println("\nRunning full two-layer atmosphere simulation for $(round(Int, sim_hours)) hours...")
+println("\nRunning two-layer atmosphere simulation for $(round(Int, sim_hours)) hours...")
 progress = make_progress_callback(sim_hours, update_interval_hours=100)
-@time sol = run_simulation_with_full_twolayer_atmosphere(moon, sim_hours, T0, M0,
-                                                          U0=U0, M_up0=M_up0, T_up0=T_up0,
-                                                          callback=progress)
+@time sol = run_simulation_with_twolayer_atmosphere(moon, sim_hours, T0, M0,
+    U0=U0, M_up0=M_up0,
+    callback=progress)
 println()  # newline after progress
 
 println("\nSimulation complete!")
 println("  Number of timesteps: $(length(sol.t))")
 println("  Final time: $(sol.t[end]/3600) hours")
 
-# Extract final state (5 fields now)
+# Extract final state (4 fields)
 n_cells = moon.n_lat * moon.n_lon
 T_final = reshape(sol.u[end][1:n_cells], moon.n_lat, moon.n_lon)
 M_final = reshape(sol.u[end][n_cells+1:2n_cells], moon.n_lat, moon.n_lon)
 U_final = reshape(sol.u[end][2n_cells+1:3n_cells], moon.n_lat, moon.n_lon)
 M_up_final = reshape(sol.u[end][3n_cells+1:4n_cells], moon.n_lat, moon.n_lon)
-T_up_final = reshape(sol.u[end][4n_cells+1:5n_cells], moon.n_lat, moon.n_lon)
 T_final_C = T_final .- 273.15
 
 # Global temperature statistics
@@ -109,23 +106,6 @@ println("  Mean M_up: $(round(global_mean_M_up, digits=4)) kg/m²")
 println("  Min M_up:  $(round(global_min_M_up, digits=4)) kg/m²")
 println("  Max M_up:  $(round(global_max_M_up, digits=4)) kg/m²")
 
-# Upper temperature statistics
-global_mean_T_up = sum(T_up_final .* moon.cell_areas)
-global_min_T_up = minimum(T_up_final)
-global_max_T_up = maximum(T_up_final)
-
-println("\n" * "="^60)
-println("UPPER TEMPERATURE STATISTICS")
-println("="^60)
-println("  Mean T_up: $(round(global_mean_T_up, digits=1)) K ($(round(global_mean_T_up - 273.15, digits=1))°C)")
-println("  Min T_up:  $(round(global_min_T_up, digits=1)) K ($(round(global_min_T_up - 273.15, digits=1))°C)")
-println("  Max T_up:  $(round(global_max_T_up, digits=1)) K ($(round(global_max_T_up - 273.15, digits=1))°C)")
-println("  T_up range: $(round(global_max_T_up - global_min_T_up, digits=1)) K")
-
-# Temperature contrast between surface and upper layer
-T_contrast = mean(T_final .- T_up_final)
-println("  Mean surface-upper contrast: $(round(T_contrast, digits=1)) K")
-
 # Compute precipitation field at final time
 precip_final = zeros(moon.n_lat, moon.n_lon)
 for i in 1:moon.n_lat
@@ -133,13 +113,8 @@ for i in 1:moon.n_lat
         lat = moon.latitudes[i]
         elev = moon.elevation[i, j]
         U_cell = max(U_FLOOR, U_final[i, j])
-        T_up_cell = T_up_final[i, j]
 
-        # Temperature-enhanced descent
-        zonal_T_up = mean(T_up_final[i, :])
-        T_descent_factor = compute_temperature_descent_factor(T_up_cell, zonal_T_up)
-        descent = compute_total_descent_rate(U_cell, lat) * T_descent_factor
-
+        descent = compute_total_descent_rate(U_cell, lat)
         drying_factor = compute_descent_saturation_multiplier(descent)
         elev_meters = max(0.0, elev) * ELEVATION_SCALE
         T_at_altitude = T_final[i, j] - LAPSE_RATE * elev_meters
@@ -175,22 +150,14 @@ min_U_lat_idx = argmin(zonal_U)
 println("  Peak U latitude:   $(round(moon.latitudes[max_U_lat_idx], digits=1))° (U=$(round(zonal_U[max_U_lat_idx], digits=3)))")
 println("  Minimum U latitude: $(round(moon.latitudes[min_U_lat_idx], digits=1))° (U=$(round(zonal_U[min_U_lat_idx], digits=3)))")
 
-# Zonal mean T_up by latitude
-zonal_T_up = [mean(T_up_final[i, :]) for i in 1:moon.n_lat]
-max_T_up_lat_idx = argmax(zonal_T_up)
-min_T_up_lat_idx = argmin(zonal_T_up)
-println("\n  Peak T_up latitude:   $(round(moon.latitudes[max_T_up_lat_idx], digits=1))° (T_up=$(round(zonal_T_up[max_T_up_lat_idx], digits=1)) K)")
-println("  Minimum T_up latitude: $(round(moon.latitudes[min_T_up_lat_idx], digits=1))° (T_up=$(round(zonal_T_up[min_T_up_lat_idx], digits=1)) K)")
-
 # Find descent zones
 println("\n  Looking for subtropical desert signatures...")
 for lat_deg in [-30.0, -20.0, 20.0, 30.0]
     lat_idx = argmin(abs.(moon.latitudes .- lat_deg))
     avg_U = mean(U_final[lat_idx, :])
     avg_M = mean(M_final[lat_idx, :])
-    avg_T_up = mean(T_up_final[lat_idx, :])
     avg_precip = mean(precip_mm_hr[lat_idx, :])
-    println("    Lat $(round(Int, lat_deg))°: U=$(round(avg_U, digits=3)), M=$(round(avg_M, digits=2)) kg/m², T_up=$(round(avg_T_up, digits=1)) K, precip=$(round(avg_precip, digits=3)) mm/hr")
+    println("    Lat $(round(Int, lat_deg))°: U=$(round(avg_U, digits=3)), M=$(round(avg_M, digits=2)) kg/m², precip=$(round(avg_precip, digits=3)) mm/hr")
 end
 
 # Mass conservation check
@@ -202,7 +169,7 @@ println("    Final total U:   $(round(sum(U_final .* moon.cell_areas), digits=3)
 print_biome_statistics(T_final, M_final, moon)
 
 # === Use unified output system ===
-config = RunConfig("2d_full_twolayer")
+config = RunConfig("2d_twolayer")
 ctx = initialize_run(config)
 
 save_results!(ctx, sol, moon, T0=T0, M0=M0)

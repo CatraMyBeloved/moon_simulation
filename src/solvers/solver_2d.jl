@@ -334,8 +334,8 @@ function derivatives_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
             lon = moon.longitudes[j]
             elev = moon.elevation[i, j]
 
-            # Vertical exchange
-            ascent = compute_convective_ascent_rate(T_cell, zonal_T[i], U_cell, M_cell, lat)
+            # Vertical exchange (absolute temperature threshold + moisture boost)
+            ascent = compute_convective_ascent_rate(T_cell, U_cell, M_cell, lat)
             descent = compute_total_descent_rate(U_cell, lat)
             floor_restore = compute_upper_mass_floor_restoration(U_raw)
 
@@ -345,7 +345,12 @@ function derivatives_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
             precip_ascent, M_to_upper = compute_ascent_moisture_transfer(ascent, M_cell, T_cell)
             M_from_upper = compute_descent_moisture_transfer(descent, M_up_cell, U_cell)
 
-            dM_up_raw = M_to_upper - M_from_upper + M_up_transport[i, j]
+            # Upper layer precipitation - cold upper atmosphere can't hold much moisture
+            T_upper = T_cell - UPPER_LAYER_TEMP_DROP
+            M_sat_upper = compute_saturation_moisture_at_temperature(T_upper)
+            precip_upper = M_up_cell > M_sat_upper ? UPPER_LAYER_PRECIP_RATE * (M_up_cell - M_sat_upper) : 0.0
+
+            dM_up_raw = M_to_upper - M_from_upper - precip_upper + M_up_transport[i, j]
             # Prevent M_up from going negative: if already near zero and derivative is negative, clamp
             if M_up_cell <= 0.01 && dM_up_raw < 0.0
                 dM_up[i, j] = max(dM_up_raw, -M_up_cell * 0.1)  # Soft floor
@@ -376,9 +381,13 @@ function derivatives_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
 
             precip_surf = M_cell > M_sat_effective ? PRECIP_RATE * (M_cell - M_sat_effective) : 0.0
 
-            total_precip = precip_surf + precip_ascent
+            # Total precipitation includes surface, ascent, and upper layer (all release latent heat)
+            total_precip = precip_surf + precip_ascent + precip_upper
             Q_latent = compute_latent_heat_flux(total_precip, evap)
 
+            # Surface moisture: gains from evap, M_from_upper, transport
+            # Loses to precip_surf and lifting
+            # precip_upper contributes to total_precip (latent heat) but falls to ground as runoff
             M_lifted = ascent * M_cell * LIFT_FRACTION
             dM[i, j] = evap - precip_surf - M_lifted + M_from_upper + moist_transport[i, j]
 
@@ -392,15 +401,16 @@ end
 # =============================================================================
 
 """
-    apply_upwind_temperature_transport(flow, U_nb, T_up_nb, specific_T_local) -> Float64
+    apply_upwind_temperature_transport(flow, T_up_nb, T_up_local) -> Float64
 
 Helper for upwind temperature transport in upper layer.
+Temperature is intensive (doesn't scale with mass), so we use simple upwind advection.
 """
-@inline function apply_upwind_temperature_transport(flow::Real, U_nb::Real, T_up_nb::Real, specific_T_local::Real)
+@inline function apply_upwind_temperature_transport(flow::Real, T_up_nb::Real, T_up_local::Real)
     if flow > 0  # inflow from neighbor
-        return flow * T_up_nb / max(U_nb, U_FLOOR)
+        return flow * T_up_nb
     else  # outflow to neighbor
-        return flow * specific_T_local
+        return flow * T_up_local
     end
 end
 
@@ -418,7 +428,6 @@ Compute upper layer mass, moisture, and temperature transport for cell (i,j).
     M_up_here = max(M_up[i, j], 0.0)
     T_up_here = T_up[i, j]
     specific_M = M_up_here / U_here
-    specific_T = T_up_here / U_here
 
     # North neighbor
     if i > 1
@@ -427,7 +436,7 @@ Compute upper layer mass, moisture, and temperature transport for cell (i,j).
         flow = UPPER_MERIDIONAL_COEFF * ΔU
         U_transport[i, j] += flow
         M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i-1, j], specific_M)
-        T_up_transport[i, j] += apply_upwind_temperature_transport(flow, U_nb, T_up[i-1, j], specific_T)
+        T_up_transport[i, j] += apply_upwind_temperature_transport(flow, T_up[i-1, j], T_up_here)
     end
 
     # South neighbor
@@ -437,7 +446,7 @@ Compute upper layer mass, moisture, and temperature transport for cell (i,j).
         flow = UPPER_MERIDIONAL_COEFF * ΔU
         U_transport[i, j] += flow
         M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i+1, j], specific_M)
-        T_up_transport[i, j] += apply_upwind_temperature_transport(flow, U_nb, T_up[i+1, j], specific_T)
+        T_up_transport[i, j] += apply_upwind_temperature_transport(flow, T_up[i+1, j], T_up_here)
     end
 
     # East neighbor (includes westerly bias)
@@ -449,7 +458,7 @@ Compute upper layer mass, moisture, and temperature transport for cell (i,j).
     flow = flow_pressure - flow_westerly
     U_transport[i, j] += flow
     M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i, j_east], specific_M)
-    T_up_transport[i, j] += apply_upwind_temperature_transport(flow, U_nb, T_up[i, j_east], specific_T)
+    T_up_transport[i, j] += apply_upwind_temperature_transport(flow, T_up[i, j_east], T_up_here)
 
     # West neighbor (includes westerly bias)
     j_west = mod1(j - 1, n_lon)
@@ -458,7 +467,7 @@ Compute upper layer mass, moisture, and temperature transport for cell (i,j).
     flow = UPPER_ZONAL_COEFF * ΔU + flow_westerly
     U_transport[i, j] += flow
     M_up_transport[i, j] += apply_upwind_moisture_transport(flow, U_nb, M_up[i, j_west], specific_M)
-    T_up_transport[i, j] += apply_upwind_temperature_transport(flow, U_nb, T_up[i, j_west], specific_T)
+    T_up_transport[i, j] += apply_upwind_temperature_transport(flow, T_up[i, j_west], T_up_here)
 end
 
 """
@@ -520,7 +529,7 @@ function derivatives_full_twolayer_atmosphere!(du, u, moon::MoonBody2D, t)
             # Vertical exchange with temperature feedback
             # Instability factor: hot surface + cold upper = enhanced convection
             instability = compute_vertical_instability_factor(T_cell, T_up_cell)
-            base_ascent = compute_convective_ascent_rate(T_cell, zonal_T[i], U_cell, M_cell, lat)
+            base_ascent = compute_convective_ascent_rate(T_cell, U_cell, M_cell, lat)
             ascent = base_ascent * instability
 
             # Temperature-driven descent: cold upper air sinks faster

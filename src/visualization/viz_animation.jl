@@ -33,7 +33,9 @@ function animate_field_evolution(sol, moon::MoonBody2D, ::Type{V}, filename::Str
     all_vals = Float64[]
     for idx in frame_indices
         field = extract_field_for_plotting(sol, moon, V, idx)
-        append!(all_vals, vec(field))
+        # Filter out NaN/Inf values
+        valid_vals = filter(isfinite, vec(field))
+        append!(all_vals, valid_vals)
     end
 
     clims = if V == Temperature
@@ -41,11 +43,18 @@ function animate_field_evolution(sol, moon::MoonBody2D, ::Type{V}, filename::Str
         n = length(sorted_vals)
         (sorted_vals[max(1, div(3 * n, 10))], sorted_vals[max(1, div(98 * n, 100))])
     else
-        (minimum(all_vals), maximum(all_vals))
+        vmin, vmax = minimum(all_vals), maximum(all_vals)
+        # Ensure minimum spread to avoid GKS color indexing errors
+        if vmax - vmin < 1e-6
+            vmax = vmin + 1.0
+        end
+        (vmin, vmax)
     end
 
     anim = @animate for (frame_num, idx) in enumerate(frame_indices)
         field = extract_field_for_plotting(sol, moon, V, idx)
+        # Clamp field to clims range to avoid color indexing issues
+        field = clamp.(field, clims[1], clims[2])
         time_hr = round(sol.t[idx] / 3600, digits=1)
 
         heatmap(moon.longitudes, moon.latitudes, field,

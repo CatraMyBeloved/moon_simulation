@@ -92,6 +92,8 @@ const EVAP_THRESHOLD = 290.0            # Minimum temperature for evaporation (K
 
 # Precipitation
 const PRECIP_RATE = 0.002
+const UPPER_LAYER_PRECIP_RATE = 0.005    # Upper layer precipitation rate (faster than surface - cold air can't hold moisture)
+const UPPER_LAYER_TEMP_DROP = 40.0       # K - temperature drop from surface to upper layer for saturation calc
 
 # Moisture transport
 # Note: Unlike heat transport which is divided by heat capacity (~1e6), moisture
@@ -195,7 +197,11 @@ const USE_THREADING = Ref(Threads.nthreads() > 1)
 # Ascent parameters
 const THERMAL_RESPONSE_SCALE = 20.0      # K - sensitivity to temperature anomaly
 const MIN_MOISTURE_CONVECTION = 2.0      # kg/m² - minimum M for deep convection (lowered for easier triggering)
-const ASCENT_RATE_MAX = 1e-4             # 1/s - maximum ascent rate (doubled for better balance)
+const ASCENT_RATE_MAX = 5e-5             # 1/s - maximum ascent rate (halved to reduce moisture overshoot)
+
+# Absolute convection trigger (replaces relative zonal mean comparison)
+const CONVECTION_TEMP_THRESHOLD = 295.0  # K (~22°C) - minimum surface T for convection
+const MOISTURE_ASCENT_SENSITIVITY = 0.5  # log-scale multiplier for moisture boost
 
 # Descent parameters
 const BASE_DESCENT_RATE = 5e-6           # 1/s - background subsidence everywhere (halved for stability)

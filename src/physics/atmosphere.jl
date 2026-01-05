@@ -41,34 +41,54 @@ High U above suppresses further ascent.
     return U_mean / (U_mean + max(U_above, U_FLOOR))
 end
 
+"""
+    compute_moisture_ascent_multiplier(M_surf) -> Float64
+
+Calculate moisture boost factor for convective ascent.
+More surface moisture = stronger convection (log scale).
+
+At M_surf = 5 kg/m² (reference): multiplier = 1.0
+At M_surf = 50 kg/m² (ocean): multiplier ≈ 2.15
+"""
+@inline function compute_moisture_ascent_multiplier(M_surf::Real)
+    M_ref = 5.0  # reference moisture for multiplier = 1.0
+    if M_surf <= M_ref
+        return 1.0
+    end
+    return 1.0 + MOISTURE_ASCENT_SENSITIVITY * log(M_surf / M_ref)
+end
+
 # =============================================================================
 # Ascent Rate
 # =============================================================================
 
 """
-    compute_convective_ascent_rate(T_surf, T_zonal, U_above, M_surf, lat_deg) -> Float64
+    compute_convective_ascent_rate(T_surf, U_above, M_surf, lat_deg) -> Float64
 
 Compute vertical ascent rate from surface to upper atmosphere.
 
 Ascent requires:
-1. Surface temperature exceeding zonal mean (hot anomaly)
+1. Surface temperature exceeding absolute threshold (CONVECTION_TEMP_THRESHOLD)
 2. Sufficient moisture for deep convection
 3. Upper atmosphere not already saturated with mass
 
+Higher moisture boosts ascent rate (moisture_factor), enabling ocean convection.
+
 Returns ascent rate in 1/s.
 """
-@inline function compute_convective_ascent_rate(T_surf::Real, T_zonal::Real, U_above::Real,
+@inline function compute_convective_ascent_rate(T_surf::Real, U_above::Real,
                                                  M_surf::Real, lat_deg::Real)
-    ΔT = T_surf - T_zonal
-
-    if ΔT <= 0.0 || !has_sufficient_moisture_for_deep_convection(M_surf)
+    # Absolute temperature threshold (no zonal comparison)
+    if T_surf < CONVECTION_TEMP_THRESHOLD || !has_sufficient_moisture_for_deep_convection(M_surf)
         return 0.0
     end
 
+    ΔT = T_surf - CONVECTION_TEMP_THRESHOLD
     lat_factor = compute_latitude_convection_factor(lat_deg)
     backpressure = compute_upper_layer_backpressure_factor(U_above)
+    moisture_factor = compute_moisture_ascent_multiplier(M_surf)
 
-    rate = lat_factor * (ΔT / THERMAL_RESPONSE_SCALE) * backpressure * ASCENT_RATE_MAX
+    rate = lat_factor * (ΔT / THERMAL_RESPONSE_SCALE) * moisture_factor * backpressure * ASCENT_RATE_MAX
 
     return min(rate, ASCENT_RATE_MAX)
 end
