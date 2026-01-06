@@ -1,5 +1,7 @@
 """
 Visualization helper functions: field extraction, solution detection, plot utilities.
+
+Note: Two-layer atmosphere visualization has been archived to src/archived/twolayer/
 """
 
 using Plots
@@ -14,9 +16,6 @@ abstract type PlotVariable end
 struct Temperature <: PlotVariable end
 struct Moisture <: PlotVariable end
 struct Precipitation <: PlotVariable end
-struct UpperMass <: PlotVariable end
-struct UpperMoisture <: PlotVariable end
-struct UpperTemperature <: PlotVariable end
 struct Biome <: PlotVariable end
 
 # =============================================================================
@@ -26,37 +25,22 @@ struct Biome <: PlotVariable end
 plot_line_color(::Type{Temperature}) = :red
 plot_line_color(::Type{Moisture}) = :blue
 plot_line_color(::Type{Precipitation}) = :teal
-plot_line_color(::Type{UpperMass}) = :purple
-plot_line_color(::Type{UpperMoisture}) = :cyan
-plot_line_color(::Type{UpperTemperature}) = :orange
 
 heatmap_colorscheme(::Type{Temperature}) = :thermal
 heatmap_colorscheme(::Type{Moisture}) = :Blues
-heatmap_colorscheme(::Type{UpperMass}) = :viridis
-heatmap_colorscheme(::Type{UpperMoisture}) = :YlGnBu
-heatmap_colorscheme(::Type{UpperTemperature}) = :thermal
 heatmap_colorscheme(::Type{Precipitation}) = :YlGnBu
 
 axis_label(::Type{Temperature}) = "Temperature (°C)"
 axis_label(::Type{Moisture}) = "Moisture (kg/m²)"
 axis_label(::Type{Precipitation}) = "Precipitation (mm/hr)"
-axis_label(::Type{UpperMass}) = "Upper Mass (relative)"
-axis_label(::Type{UpperMoisture}) = "Upper Moisture (kg/m²)"
-axis_label(::Type{UpperTemperature}) = "Upper Temperature (K)"
 
 colorbar_label(::Type{Temperature}) = "°C"
 colorbar_label(::Type{Moisture}) = "kg/m²"
 colorbar_label(::Type{Precipitation}) = "mm/hr"
-colorbar_label(::Type{UpperMass}) = "relative"
-colorbar_label(::Type{UpperMoisture}) = "kg/m²"
-colorbar_label(::Type{UpperTemperature}) = "K"
 
 variable_name(::Type{Temperature}) = "Temperature"
 variable_name(::Type{Moisture}) = "Moisture"
 variable_name(::Type{Precipitation}) = "Precipitation"
-variable_name(::Type{UpperMass}) = "Upper Mass"
-variable_name(::Type{UpperMoisture}) = "Upper Moisture"
-variable_name(::Type{UpperTemperature}) = "Upper Temperature"
 variable_name(::Type{Biome}) = "Biome"
 
 # Biome colors - 12 distinct colors for categorical visualization (RGB tuples 0-1)
@@ -81,10 +65,6 @@ const BIOME_COLORS_RGB = [
 
 is_coupled_temperature_moisture_solution(sol, moon::MoonBody2D) = length(sol.u[1]) >= 2 * moon.n_lat * moon.n_lon
 
-is_twolayer_atmosphere_solution(sol, moon::MoonBody2D) = length(sol.u[1]) == 4 * moon.n_lat * moon.n_lon
-
-is_full_twolayer_atmosphere_solution(sol, moon::MoonBody2D) = length(sol.u[1]) == 5 * moon.n_lat * moon.n_lon
-
 # =============================================================================
 # Field Extraction
 # =============================================================================
@@ -103,21 +83,6 @@ function extract_moisture_field(sol, moon::MoonBody2D, idx::Int)
     return reshape(sol.u[idx][n_cells+1:2n_cells], moon.n_lat, moon.n_lon)
 end
 
-function extract_upper_mass_field(sol, moon::MoonBody2D, idx::Int)
-    n_cells = moon.n_lat * moon.n_lon
-    return reshape(sol.u[idx][2n_cells+1:3n_cells], moon.n_lat, moon.n_lon)
-end
-
-function extract_upper_moisture_field(sol, moon::MoonBody2D, idx::Int)
-    n_cells = moon.n_lat * moon.n_lon
-    return reshape(sol.u[idx][3n_cells+1:4n_cells], moon.n_lat, moon.n_lon)
-end
-
-function extract_upper_temperature_field(sol, moon::MoonBody2D, idx::Int)
-    n_cells = moon.n_lat * moon.n_lon
-    return reshape(sol.u[idx][4n_cells+1:5n_cells], moon.n_lat, moon.n_lon)
-end
-
 function compute_precipitation_field_mm_per_hour(sol, moon::MoonBody2D, idx::Int)
     T_2d = extract_temperature_field_celsius(sol, moon, idx) .+ 273.15
     M_2d = extract_moisture_field(sol, moon, idx)
@@ -134,9 +99,6 @@ end
 # Generic field extraction by variable type
 extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{Temperature}, idx) = extract_temperature_field_celsius(sol, moon, idx)
 extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{Moisture}, idx) = extract_moisture_field(sol, moon, idx)
-extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{UpperMass}, idx) = extract_upper_mass_field(sol, moon, idx)
-extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{UpperMoisture}, idx) = extract_upper_moisture_field(sol, moon, idx)
-extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{UpperTemperature}, idx) = extract_upper_temperature_field(sol, moon, idx)
 extract_field_for_plotting(sol, moon::MoonBody2D, ::Type{Precipitation}, idx) = compute_precipitation_field_mm_per_hour(sol, moon, idx)
 
 # =============================================================================

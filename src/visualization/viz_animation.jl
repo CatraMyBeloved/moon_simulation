@@ -81,10 +81,6 @@ animate_moisture_evolution(sol, moon, filename; kwargs...) =
     animate_field_evolution(sol, moon, Moisture, filename; kwargs...)
 animate_precipitation_evolution(sol, moon, filename; kwargs...) =
     animate_field_evolution(sol, moon, Precipitation, filename; kwargs...)
-animate_upper_mass_evolution(sol, moon, filename; kwargs...) =
-    animate_field_evolution(sol, moon, UpperMass, filename; kwargs...)
-animate_upper_moisture_evolution(sol, moon, filename; kwargs...) =
-    animate_field_evolution(sol, moon, UpperMoisture, filename; kwargs...)
 
 # =============================================================================
 # Combined Animation (T, M, Precip side by side)
@@ -107,25 +103,54 @@ function animate_combined_climate(sol, moon::MoonBody2D, filename::String;
 
     println("    Creating combined climate animation: $(length(frame_indices)) frames...")
 
-    # Compute global ranges for consistent color scales
+    # Compute global ranges for consistent color scales, filtering NaN/Inf
     T_vals, M_vals, P_vals = Float64[], Float64[], Float64[]
     for idx in frame_indices
-        append!(T_vals, vec(extract_field_for_plotting(sol, moon, Temperature, idx)))
-        append!(M_vals, vec(extract_field_for_plotting(sol, moon, Moisture, idx)))
-        append!(P_vals, vec(extract_field_for_plotting(sol, moon, Precipitation, idx)))
+        T_field = extract_field_for_plotting(sol, moon, Temperature, idx)
+        M_field = extract_field_for_plotting(sol, moon, Moisture, idx)
+        P_field = extract_field_for_plotting(sol, moon, Precipitation, idx)
+        append!(T_vals, filter(isfinite, vec(T_field)))
+        append!(M_vals, filter(isfinite, vec(M_field)))
+        append!(P_vals, filter(isfinite, vec(P_field)))
     end
 
+    # Temperature: percentile-based clims
     T_sorted = sort(T_vals)
     n_T = length(T_sorted)
     T_clims = (T_sorted[max(1, div(3 * n_T, 10))], T_sorted[max(1, div(98 * n_T, 100))])
-    M_clims = (minimum(M_vals), maximum(M_vals))
-    P_clims = (minimum(P_vals), maximum(P_vals))
+    if T_clims[2] - T_clims[1] < 1e-6
+        T_clims = (T_clims[1], T_clims[1] + 1.0)
+    end
+
+    # Moisture: min/max with minimum spread
+    M_min, M_max = minimum(M_vals), maximum(M_vals)
+    if M_max - M_min < 1e-6
+        M_max = M_min + 1.0
+    end
+    M_clims = (M_min, M_max)
+
+    # Precipitation: min/max with minimum spread
+    P_min, P_max = minimum(P_vals), maximum(P_vals)
+    if P_max - P_min < 1e-6
+        P_max = P_min + 0.1
+    end
+    P_clims = (P_min, P_max)
 
     anim = @animate for (frame_num, idx) in enumerate(frame_indices)
         T_field = extract_field_for_plotting(sol, moon, Temperature, idx)
         M_field = extract_field_for_plotting(sol, moon, Moisture, idx)
         P_field = extract_field_for_plotting(sol, moon, Precipitation, idx)
         time_hr = round(sol.t[idx] / 3600, digits=1)
+
+        # Clamp fields to avoid GKS color indexing errors
+        T_field = clamp.(T_field, T_clims[1], T_clims[2])
+        M_field = clamp.(M_field, M_clims[1], M_clims[2])
+        P_field = clamp.(P_field, P_clims[1], P_clims[2])
+
+        # Replace any remaining non-finite values with clims midpoint
+        T_field = replace(T_field, NaN => (T_clims[1] + T_clims[2])/2, Inf => T_clims[2], -Inf => T_clims[1])
+        M_field = replace(M_field, NaN => (M_clims[1] + M_clims[2])/2, Inf => M_clims[2], -Inf => M_clims[1])
+        P_field = replace(P_field, NaN => (P_clims[1] + P_clims[2])/2, Inf => P_clims[2], -Inf => P_clims[1])
 
         p1 = heatmap(moon.longitudes, moon.latitudes, T_field,
             title="Temperature (°C) - t=$(time_hr)h",

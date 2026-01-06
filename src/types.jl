@@ -78,11 +78,6 @@ Full spatial representation with topography support.
 - `_transport_cache::Vector{Float64}`: Pre-allocated buffer for ODE solver
 - `moisture_transport_coeffs::Array{Float64,3}`: Moisture transport modifiers [lat, lon, direction]
 - `_moisture_cache::Vector{Float64}`: Pre-allocated buffer for moisture transport
-- `_upper_U_cache::Vector{Float64}`: Pre-allocated buffer for upper mass transport
-- `_upper_M_cache::Vector{Float64}`: Pre-allocated buffer for upper moisture transport
-- `_zonal_mean_cache::Vector{Float64}`: Pre-allocated buffer for zonal mean T computation
-- `_upper_T_cache::Vector{Float64}`: Pre-allocated buffer for upper temperature transport
-- `_zonal_T_up_cache::Vector{Float64}`: Pre-allocated buffer for zonal mean T_up computation
 """
 struct MoonBody2D <: AbstractMoonBody
     n_lat::Int
@@ -95,11 +90,6 @@ struct MoonBody2D <: AbstractMoonBody
     _transport_cache::Vector{Float64}
     moisture_transport_coeffs::Array{Float64,3}
     _moisture_cache::Vector{Float64}
-    _upper_U_cache::Vector{Float64}
-    _upper_M_cache::Vector{Float64}
-    _zonal_mean_cache::Vector{Float64}
-    _upper_T_cache::Vector{Float64}
-    _zonal_T_up_cache::Vector{Float64}
 end
 
 """
@@ -147,20 +137,9 @@ function MoonBody2D(n_lat::Int=18, n_lon::Int=36; seed::Int=42, sea_level::Float
     transport_cache = zeros(Float64, n_lat * n_lon)
     moisture_cache = zeros(Float64, n_lat * n_lon)
 
-    # Two-layer atmosphere caches
-    upper_U_cache = zeros(Float64, n_lat * n_lon)
-    upper_M_cache = zeros(Float64, n_lat * n_lon)
-    zonal_mean_cache = zeros(Float64, n_lat)
-
-    # Full two-layer atmosphere caches (Phase 2 - upper temperature)
-    upper_T_cache = zeros(Float64, n_lat * n_lon)
-    zonal_T_up_cache = zeros(Float64, n_lat)
-
     return MoonBody2D(n_lat, n_lon, latitudes, longitudes, cell_areas,
                       elevation, transport_coeffs, transport_cache,
-                      moisture_transport_coeffs, moisture_cache,
-                      upper_U_cache, upper_M_cache, zonal_mean_cache,
-                      upper_T_cache, zonal_T_up_cache)
+                      moisture_transport_coeffs, moisture_cache)
 end
 
 function Base.show(io::IO, moon::MoonBody2D)

@@ -1,5 +1,13 @@
 """
-Main script to run 2D Hot Moon simulation with moisture system
+2D Temperature + Moisture Climate Simulation
+
+Runs a coupled temperature-moisture simulation using a single-layer
+atmosphere model. This provides realistic climate dynamics with
+evaporation, precipitation, and latent heat effects.
+
+Usage:
+    julia --project=. scripts/run_2d_moisture.jl
+    julia --project=. -t 4 scripts/run_2d_moisture.jl  # With threading
 """
 
 using Pkg
@@ -10,13 +18,28 @@ using Statistics
 include(joinpath(@__DIR__, "../src/HotMoon.jl"))
 using .HotMoon
 
+# =============================================================================
+# Configuration
+# =============================================================================
+
+const N_LAT = 90          # Latitude bands (2° resolution)
+const N_LON = 180         # Longitude cells (2° resolution)
+const SIM_HOURS = 60000.0 # Simulation time (~125 days)
+
+# Terrain noise parameters (matching view_terrain.jl)
+const TERRAIN_SEED = 32       # Random seed for reproducibility
+const TERRAIN_SEA_LEVEL = 0.05  # Higher = more ocean
+const TERRAIN_SCALE = 0.01    # Noise scale (smaller = larger landmasses)
+const TERRAIN_OCTAVES = 5     # Detail level (more = finer features)
+
 println("="^60)
 println("Hot Moon 2D Climate Simulation (with Moisture)")
 println("="^60)
 
-# Create moon with 90 lat × 180 lon grid (2° × 2° resolution)
+# Create moon with specified grid resolution
 println("\nCreating moon...")
-moon = HotMoonBody(90, 180, seed=32, sea_level=0.0, scale=0.01, octaves=5)
+moon = HotMoonBody(N_LAT, N_LON, seed=TERRAIN_SEED, sea_level=TERRAIN_SEA_LEVEL,
+                   scale=TERRAIN_SCALE, octaves=TERRAIN_OCTAVES)
 println(moon)
 println("  Total cells: $(moon.n_lat * moon.n_lon)")
 
@@ -32,10 +55,9 @@ println("Initial temperature range: $(round(minimum(T0) - 273.15, digits=1))°C 
 println("Initial moisture range: $(round(minimum(M0), digits=2)) to $(round(maximum(M0), digits=2)) kg/m²")
 
 # Run simulation
-sim_hours = 30000.0
-println("\nRunning coupled T-M simulation for $(round(Int, sim_hours)) hours...")
-progress = make_progress_callback(sim_hours, update_interval_hours=100)
-@time sol = run_simulation_with_moisture(moon, sim_hours, T0, M0, callback=progress)
+println("\nRunning coupled T-M simulation for $(round(Int, SIM_HOURS)) hours...")
+progress = make_progress_callback(SIM_HOURS, update_interval_hours=100)
+@time sol = run_simulation_with_moisture(moon, SIM_HOURS, T0, M0, callback=progress)
 println()  # newline after progress
 
 println("\nSimulation complete!")
@@ -111,7 +133,9 @@ print_biome_statistics(T_final, M_final, moon)
 config = RunConfig("2d_moisture")
 ctx = initialize_run(config)
 
-save_results!(ctx, sol, moon, T0=T0, M0=M0)
+terrain_params = (seed=TERRAIN_SEED, sea_level=TERRAIN_SEA_LEVEL,
+                  scale=TERRAIN_SCALE, octaves=TERRAIN_OCTAVES)
+save_results!(ctx, sol, moon, T0=T0, M0=M0, terrain_params=terrain_params)
 generate_plots!(ctx, sol, moon)
 generate_animations!(ctx, sol, moon, hours=448, frame_skip=4, fps=10)
 finalize_run!(ctx)
